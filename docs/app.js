@@ -1,0 +1,4008 @@
+'use strict';
+
+
+// ===========================================================================
+// CONFIGURATION
+// ===========================================================================
+
+const GRID_COLUMNS = 20;
+const GRID_ROWS = 13;
+const HALF_COLUMNS = GRID_COLUMNS / 2;
+const TILE_SIZE_PX = 48;
+const HALF_TILE_PX = TILE_SIZE_PX / 2;
+const CANVAS_WIDTH_PX = GRID_COLUMNS * TILE_SIZE_PX;
+const CANVAS_HEIGHT_PX = GRID_ROWS * TILE_SIZE_PX;
+
+const TILE_DECK = '.';
+const TILE_CORRIDOR = '#';
+const TILE_WALL = 'W';
+const TILE_MACHINE = 'M';
+const TILE_BREACH = 'B';
+const TILE_LATE_BREACH = 'L';
+const TILE_CORE = 'C';
+// Digits mark duct mouths; matching digits on a side are linked.
+const DUCT_TILES = new Set(['1', '2', '3']);
+
+// Port half only; starboard is always the mirror image.
+// 1/2/3 = duct mouths (matching digits are linked, hidden travel). L = hatch that opens late.
+const DECOR_GARDEN = 'garden';
+const DECOR_CARGO = 'cargo';
+const DECOR_CLINIC = 'clinic';
+const DECOR_STARS = 'stars';
+const DECOR_FURNACE = 'furnace';
+const DECOR_FROST = 'frost';
+
+const DECKS = Object.freeze({
+  hydroponics: {
+    key: 'hydroponics', name: 'Hydroponics Ring', blurb: 'An overgrown growing ring. A duct links the far corner of the loop to the reactor room. Seal it or it will be used.',
+    layout: [
+      'WWWWWBWWWW',
+      '..W..#...W',
+      '.....#.M.W',
+      '..######..',
+      '..#..W.#..',
+      '.M#....1..',
+      'C##.M..##B',
+      '.1#....#..',
+      '..#..W.#..',
+      '..######..',
+      '.....#.M.W',
+      '..W..#...W',
+      'WWWWWBWWWW',
+    ],
+    theme: {
+      decorStyle: DECOR_GARDEN, deckLight: '#3d4d42', deckDark: '#27312b', corridorFloor: '#1b2320', edgeLight: '#8ee06b', edgeLightDim: 'rgba(142, 224, 107, 0.3)',
+      wall: '#4d6052', wallTop: '#617766', wallShade: '#2c3a31', machine: '#4f6238', machineShade: '#2f3c22', grime: 'rgba(70, 110, 50, 0.22)', splatter: 'rgba(142, 224, 107, 0.4)',
+      lamp: 'rgba(142, 224, 107, 0.12)', detail: '#6fae5a', swatch: 'linear-gradient(135deg, #3d4d42, #8ee06b)',
+    },
+  },
+  cargo: {
+    key: 'cargo', name: 'Cargo Spine', blurb: 'Rust and crates. Top and bottom hatches open straight onto the spine; the seam hatch is sealed until 2:00, then it is the short road.',
+    layout: [
+      'WWWBWWWWWW',
+      '...#.....W',
+      '.M.#..M..W',
+      '...####...',
+      '...#..#.M.',
+      '.W.#..#...',
+      'C###.M###L',
+      '.W.#..#...',
+      '...#..#.M.',
+      '...####...',
+      '.M.#..M..W',
+      '...#.....W',
+      'WWWBWWWWWW',
+    ],
+    theme: {
+      decorStyle: DECOR_CARGO, deckLight: '#4c4238', deckDark: '#312923', corridorFloor: '#211c18', edgeLight: '#f2a93b', edgeLightDim: 'rgba(242, 169, 59, 0.3)',
+      wall: '#5c4c3d', wallTop: '#6f5c4a', wallShade: '#3a2f27', machine: '#8a4a2a', machineShade: '#4d2a18', grime: 'rgba(0, 0, 0, 0.16)', splatter: 'rgba(181, 101, 29, 0.45)',
+      lamp: 'rgba(242, 169, 59, 0.14)', detail: '#c97a3a', swatch: 'linear-gradient(135deg, #4c4238, #f2a93b)',
+    },
+  },
+  medbay: {
+    key: 'medbay', name: 'Medbay Cross', blurb: 'White tile and old blood. Four ways in, and a duct from the upper corridor drops out beside the reactor.',
+    layout: [
+      'WWWWWWBWWW',
+      '..M...#...',
+      '......1..W',
+      '.########L',
+      '.#..W.#...',
+      '.#....#...',
+      'C#.M..###B',
+      '.1....#...',
+      '.#..W.#...',
+      '.######.M.',
+      '......#..W',
+      '..M...#...',
+      'WWWWWWBWWW',
+    ],
+    theme: {
+      decorStyle: DECOR_CLINIC, deckLight: '#c4ccd1', deckDark: '#a4aeb5', corridorFloor: '#6a747c', edgeLight: '#57d3ff', edgeLightDim: 'rgba(87, 211, 255, 0.3)',
+      wall: '#8d979f', wallTop: '#b3bcc3', wallShade: '#5b656d', machine: '#d9dfe4', machineShade: '#8f9aa3', grime: 'rgba(0, 0, 0, 0.1)', splatter: 'rgba(150, 25, 25, 0.55)',
+      lamp: 'rgba(255, 255, 255, 0.12)', detail: '#e2513f', swatch: 'linear-gradient(135deg, #c4ccd1, #57d3ff)',
+    },
+  },
+  observation: {
+    key: 'observation', name: 'Observation Deck', blurb: 'Starlight through the hull. The reactor sits in the top corner behind a long march, unless the duct is open or the top hatch opens at 2:00.',
+    layout: [
+      'WWWWWWWLWW',
+      'C#.....#..',
+      '.1..M..#..',
+      '.#######..',
+      '....#.....',
+      '.M..#..M..',
+      '....#...#B',
+      '....#...1.',
+      '.M..#.M.#.',
+      '....#####.',
+      '.......W#.',
+      '.......M#.',
+      'WWWWWWWWBW',
+    ],
+    theme: {
+      decorStyle: DECOR_STARS, deckLight: '#262a40', deckDark: '#181b2d', corridorFloor: '#10121f', edgeLight: '#b48cff', edgeLightDim: 'rgba(180, 140, 255, 0.3)',
+      wall: '#2f3556', wallTop: '#4b5286', wallShade: '#1a1d34', machine: '#3c426e', machineShade: '#242849', grime: 'rgba(0, 0, 0, 0.25)', splatter: 'rgba(142, 224, 107, 0.4)',
+      lamp: 'rgba(180, 140, 255, 0.12)', detail: '#f4f0ff', swatch: 'linear-gradient(135deg, #262a40, #b48cff)',
+    },
+  },
+  engineering: {
+    key: 'engineering', name: 'Engineering Core', blurb: 'The reactor sits in the middle of the loop with machinery on both flanks. The seam hatch opens at 2:00, five tiles from the core.',
+    layout: [
+      'WWWWBWWWWW',
+      '....#..M..',
+      '.M..#....W',
+      '..#####...',
+      '..#...#.M.',
+      '..#.M.#...',
+      '..##C####L',
+      '..#.M.#...',
+      '..#...#.M.',
+      '..#####...',
+      '.M..#....W',
+      '....#..M..',
+      'WWWWBWWWWW',
+    ],
+    theme: {
+      decorStyle: DECOR_FURNACE, deckLight: '#4b3b36', deckDark: '#31241f', corridorFloor: '#1f1412', edgeLight: '#ff6a3a', edgeLightDim: 'rgba(255, 106, 58, 0.3)',
+      wall: '#5c4239', wallTop: '#7b584a', wallShade: '#36241e', machine: '#6d3b2a', machineShade: '#3f2118', grime: 'rgba(0, 0, 0, 0.2)', splatter: 'rgba(255, 140, 58, 0.4)',
+      lamp: 'rgba(255, 106, 58, 0.16)', detail: '#ff8c3a', swatch: 'linear-gradient(135deg, #4b3b36, #ff6a3a)',
+    },
+  },
+  cryo: {
+    key: 'cryo', name: 'Cryo Bay', blurb: 'Frost on every surface. Two long hull lanes meet at the reactor. The seam hatch opens at 2:00 straight into a duct that ends four tiles from the core.',
+    layout: [
+      'WWWWWWWBWW',
+      '.......#..',
+      '.M.....#..',
+      '.#######..',
+      '.#..M.....',
+      '.#....W...',
+      'C#1..M.M1L',
+      '.#....W...',
+      '.#..M.....',
+      '.#######..',
+      '.M.....#..',
+      '.......#..',
+      'WWWWWWWBWW',
+    ],
+    theme: {
+      decorStyle: DECOR_FROST, deckLight: '#6d8799', deckDark: '#4d6474', corridorFloor: '#2a3944', edgeLight: '#9fdcff', edgeLightDim: 'rgba(159, 220, 255, 0.3)',
+      wall: '#7b94a7', wallTop: '#abc3d3', wallShade: '#4a5f6f', machine: '#607e95', machineShade: '#3b4f5f', grime: 'rgba(255, 255, 255, 0.14)', splatter: 'rgba(191, 230, 255, 0.5)',
+      lamp: 'rgba(159, 220, 255, 0.14)', detail: '#e6f6ff', swatch: 'linear-gradient(135deg, #6d8799, #9fdcff)',
+    },
+  },
+});
+const DECK_ORDER = Object.freeze(['hydroponics', 'cargo', 'medbay', 'observation', 'cryo', 'engineering']);
+
+const SIGHT_BLOCKING_TILES = new Set([TILE_WALL, TILE_MACHINE, ...DUCT_TILES]);
+const WALKABLE_TILES = new Set([TILE_CORRIDOR, TILE_BREACH, TILE_LATE_BREACH, TILE_CORE, ...DUCT_TILES]);
+const BREACH_TILES = new Set([TILE_BREACH, TILE_LATE_BREACH]);
+const SEALABLE_TILES = new Set([TILE_CORRIDOR, ...DUCT_TILES]);
+const DUCT_EDGE_COST = 4;
+const DUCT_CRAWL_SPEED_PX_PER_S = 90;
+const SEND_TARGET_BREACH = 'breach';
+const SEND_TARGET_POINT = 'point';
+const RAYCAST_MAX_STEPS = GRID_COLUMNS + GRID_ROWS + 2;
+
+const SIDE_PORT = 0;
+const SIDE_STARBOARD = 1;
+const SIDE_NAMES = Object.freeze({ [SIDE_PORT]: 'Port', [SIDE_STARBOARD]: 'Starboard' });
+
+const DAMAGE_KINETIC = 'kinetic';
+const DAMAGE_ENERGY = 'energy';
+
+const MATCH_RULES = Object.freeze({
+  tickS: 1 / 60,
+  maxStepsPerFrame: 8,
+  coreHp: 30,
+  startingScrap: 300,
+  scrapIncome: 18,
+  scrapIncomeIntervalS: 5,
+  startingBiomass: 30,
+  biomassCap: 100,
+  biomassRegenPerS: 1.4,
+  bulkheadCap: 6,
+  bulkheadLifetimeS: 90,
+  reactorPowerCap: 24,
+  towerPowerByLevel: [1, 2, 3],
+  lateBreachOpenS: 120,
+  escalationRegenPctPerMin: 0.25,
+  escalationHpPctPerMin: 0.1,
+  biomassCapPerMin: 8,
+  ecoRegenPerSendPerS: 0.05,
+  empDurationS: 4,
+  empRadiusPx: 84,
+  sellRefundPct: 0.6,
+  podFlightS: 2.5,
+  podImpactRadiusPx: 40,
+  suddenDeathAtS: 300,
+  suddenDeathDamageIntervalS: 2,
+  suddenDeathDamage: 1,
+  fastForwardTimeScale: 2,
+  despawnMarginPx: TILE_SIZE_PX * 2,
+  projectileRadiusPx: 4,
+  burnTickS: 0.5,
+  offscreenSpawnPx: TILE_SIZE_PX,
+});
+
+const CREEP_TYPES = Object.freeze({
+  shambler: {
+    name: 'Shambler', shape: 'shambler', hp: 70, speedPxPerS: 55, kineticResistPct: 0, energyResistPct: 0.15, regenHpPerS: 0,
+    isSlowImmune: false, radiusPx: 11, coreDamage: 1, scrapBounty: 6, deathSpawn: null,
+    bodyColor: '#7b8a6e', trimColor: '#3f4a38', accentColor: '#8ee06b',
+  },
+  lurcher: {
+    name: 'Lurcher', shape: 'lurcher', hp: 45, speedPxPerS: 130, kineticResistPct: 0, energyResistPct: 0, regenHpPerS: 0,
+    isSlowImmune: false, radiusPx: 10, coreDamage: 1, scrapBounty: 7, deathSpawn: null,
+    bodyColor: '#a58a7a', trimColor: '#4e3d33', accentColor: '#ff6a4a',
+  },
+  carapace: {
+    name: 'Carapace', shape: 'carapace', hp: 220, speedPxPerS: 50, kineticResistPct: 0.55, energyResistPct: 0, regenHpPerS: 0,
+    isSlowImmune: false, radiusPx: 14, coreDamage: 2, scrapBounty: 14, deathSpawn: null,
+    bodyColor: '#5b6673', trimColor: '#2d343c', accentColor: '#8ee06b',
+  },
+  wispform: {
+    name: 'Wispform', shape: 'wispform', hp: 90, speedPxPerS: 95, kineticResistPct: 0, energyResistPct: 0.7, regenHpPerS: 1,
+    isSlowImmune: true, radiusPx: 10, coreDamage: 1, scrapBounty: 10, deathSpawn: null,
+    bodyColor: '#9fe8d6', trimColor: '#3a8f7f', accentColor: '#ffffff',
+  },
+  bloater: {
+    name: 'Bloater', shape: 'bloater', hp: 160, speedPxPerS: 45, kineticResistPct: 0.2, energyResistPct: 0.2, regenHpPerS: 0,
+    isSlowImmune: false, radiusPx: 15, coreDamage: 2, scrapBounty: 12, deathSpawn: { typeKey: 'shambler', count: 2 },
+    bodyColor: '#8f9a5e', trimColor: '#4a4f2a', accentColor: '#c8f07a',
+  },
+  reclaimer: {
+    name: 'Reclaimer', shape: 'reclaimer', hp: 650, speedPxPerS: 38, kineticResistPct: 0.65, energyResistPct: 0.1, regenHpPerS: 3,
+    isSlowImmune: false, radiusPx: 18, coreDamage: 4, scrapBounty: 35, deathSpawn: null,
+    bodyColor: '#6b5a48', trimColor: '#33291f', accentColor: '#f2a93b',
+  },
+});
+
+const CARD_KIND_CREEPS = 'creeps';
+const CARD_KIND_EMP = 'emp';
+const CARD_KIND_BREACHER = 'breacher';
+
+const SEND_CARDS = Object.freeze([
+  { key: 'shamblers', kind: CARD_KIND_CREEPS, name: 'Shambler pack', creepTypeKey: 'shambler', count: 5, spacingS: 0.5, biomassCost: 20, cooldownS: 5, hotkey: 'q', role: 'Cheap bodies. Soaks fire.' },
+  { key: 'lurchers', kind: CARD_KIND_CREEPS, name: 'Lurcher trio', creepTypeKey: 'lurcher', count: 3, spacingS: 0.35, biomassCost: 25, cooldownS: 7, hotkey: 'w', role: 'Fast. Slips past slow guns.' },
+  { key: 'carapace', kind: CARD_KIND_CREEPS, name: 'Carapace', creepTypeKey: 'carapace', count: 1, spacingS: 0, biomassCost: 30, cooldownS: 8, hotkey: 'e', role: 'Plated. Laughs at sentries.' },
+  { key: 'wispforms', kind: CARD_KIND_CREEPS, name: 'Wispform pair', creepTypeKey: 'wispform', count: 2, spacingS: 0.4, biomassCost: 30, cooldownS: 8, hotkey: 'r', role: 'Phased. Ignores coils and cryo.' },
+  { key: 'bloater', kind: CARD_KIND_CREEPS, name: 'Bloater', creepTypeKey: 'bloater', count: 1, spacingS: 0, biomassCost: 35, cooldownS: 10, hotkey: 't', role: 'Splits into shamblers on death.' },
+  { key: 'reclaimer', kind: CARD_KIND_CREEPS, name: 'Reclaimer', creepTypeKey: 'reclaimer', count: 1, spacingS: 0, biomassCost: 70, cooldownS: 20, hotkey: 'y', role: 'Dead loader mech. Needs coils.' },
+  { key: 'emp', kind: CARD_KIND_EMP, name: 'EMP charge', creepTypeKey: null, count: 0, spacingS: 0, biomassCost: 55, cooldownS: 25, hotkey: 'u', role: 'Blacks out turrets within two tiles of the landing for 4 s. Drop it, then send.' },
+  { key: 'breacher', kind: CARD_KIND_BREACHER, name: 'Cutter drone', creepTypeKey: null, count: 0, spacingS: 0, biomassCost: 30, cooldownS: 12, hotkey: 'i', role: 'Burns through the rival bulkhead nearest the landing.' },
+]);
+
+const PROJECTILE_ROUND = 'round';
+const PROJECTILE_ARC = 'arc';
+const PROJECTILE_SHELL = 'shell';
+const PROJECTILE_SHARD = 'shard';
+const PROJECTILE_FLAME = 'flame';
+
+const TOWER_TYPES = Object.freeze({
+  sentry: {
+    name: 'Sentry', hotkey: '1', role: 'Kinetic autogun. Fast, long reach.', damageType: DAMAGE_KINETIC, projectileKind: PROJECTILE_ROUND,
+    projectileSpeedPxPerS: 480, splashRadiusPx: 0, slowDurationS: 0, burnDurationS: 0, isBulkhead: false, color: '#b8bec8', accent: '#f2a93b',
+    levels: [
+      { cost: 60, damage: 11, attacksPerS: 1.5, rangeTiles: 3.1, slowPct: 0, burnPerS: 0 },
+      { cost: 95, damage: 20, attacksPerS: 1.7, rangeTiles: 3.4, slowPct: 0, burnPerS: 0 },
+      { cost: 140, damage: 36, attacksPerS: 1.9, rangeTiles: 3.7, slowPct: 0, burnPerS: 0 },
+    ],
+  },
+  arc: {
+    name: 'Arc coil', hotkey: '2', role: 'Energy discharge. Cuts through plating.', damageType: DAMAGE_ENERGY, projectileKind: PROJECTILE_ARC,
+    projectileSpeedPxPerS: 340, splashRadiusPx: 0, slowDurationS: 0, burnDurationS: 0, isBulkhead: false, color: '#57d3ff', accent: '#e6f8ff',
+    levels: [
+      { cost: 90, damage: 30, attacksPerS: 0.8, rangeTiles: 2.9, slowPct: 0, burnPerS: 0 },
+      { cost: 135, damage: 55, attacksPerS: 0.9, rangeTiles: 3.1, slowPct: 0, burnPerS: 0 },
+      { cost: 200, damage: 95, attacksPerS: 1.0, rangeTiles: 3.3, slowPct: 0, burnPerS: 0 },
+    ],
+  },
+  mortar: {
+    name: 'Mortar pod', hotkey: '3', role: 'Kinetic splash. Wrecks packs.', damageType: DAMAGE_KINETIC, projectileKind: PROJECTILE_SHELL,
+    projectileSpeedPxPerS: 230, splashRadiusPx: 60, slowDurationS: 0, burnDurationS: 0, isBulkhead: false, color: '#6b6f78', accent: '#f2a93b',
+    levels: [
+      { cost: 110, damage: 40, attacksPerS: 0.45, rangeTiles: 2.8, slowPct: 0, burnPerS: 0 },
+      { cost: 165, damage: 70, attacksPerS: 0.5, rangeTiles: 3.0, slowPct: 0, burnPerS: 0 },
+      { cost: 240, damage: 115, attacksPerS: 0.55, rangeTiles: 3.2, slowPct: 0, burnPerS: 0 },
+    ],
+  },
+  cryo: {
+    name: 'Cryo vent', hotkey: '4', role: 'Chills the swarm. Wisps ignore it.', damageType: DAMAGE_ENERGY, projectileKind: PROJECTILE_SHARD,
+    projectileSpeedPxPerS: 360, splashRadiusPx: 0, slowDurationS: 2, burnDurationS: 0, isBulkhead: false, color: '#9fdcff', accent: '#ffffff',
+    levels: [
+      { cost: 80, damage: 6, attacksPerS: 1.0, rangeTiles: 2.5, slowPct: 0.4, burnPerS: 0 },
+      { cost: 120, damage: 10, attacksPerS: 1.1, rangeTiles: 2.7, slowPct: 0.5, burnPerS: 0 },
+      { cost: 170, damage: 16, attacksPerS: 1.2, rangeTiles: 2.9, slowPct: 0.6, burnPerS: 0 },
+    ],
+  },
+  flamer: {
+    name: 'Flamer', hotkey: '5', role: 'Short reach. Burn stops regeneration.', damageType: DAMAGE_ENERGY, projectileKind: PROJECTILE_FLAME,
+    projectileSpeedPxPerS: 260, splashRadiusPx: 0, slowDurationS: 0, burnDurationS: 3, isBulkhead: false, color: '#ff8c3a', accent: '#ffd36b',
+    levels: [
+      { cost: 100, damage: 8, attacksPerS: 2.0, rangeTiles: 2.0, slowPct: 0, burnPerS: 5 },
+      { cost: 150, damage: 14, attacksPerS: 2.2, rangeTiles: 2.2, slowPct: 0, burnPerS: 9 },
+      { cost: 220, damage: 22, attacksPerS: 2.4, rangeTiles: 2.4, slowPct: 0, burnPerS: 14 },
+    ],
+  },
+  bulkhead: {
+    name: 'Bulkhead', hotkey: '', role: 'Seals a corridor and blocks sight.', damageType: DAMAGE_KINETIC, projectileKind: PROJECTILE_ROUND,
+    projectileSpeedPxPerS: 0, splashRadiusPx: 0, slowDurationS: 0, burnDurationS: 0, isBulkhead: true, color: '#3a4149', accent: '#f2a93b',
+    levels: [
+      { cost: 40, damage: 0, attacksPerS: 0, rangeTiles: 0, slowPct: 0, burnPerS: 0 },
+    ],
+  },
+});
+const WEAPON_TYPE_ORDER = Object.freeze(['sentry', 'arc', 'mortar', 'cryo', 'flamer']);
+const TOWER_MAX_LEVEL = 3;
+
+const TARGET_FIRST = 'first';
+const TARGET_STRONGEST = 'strongest';
+const TARGET_LAST = 'last';
+const TARGET_MODE_ORDER = Object.freeze([TARGET_FIRST, TARGET_STRONGEST, TARGET_LAST]);
+
+const COMMAND_BUILD = 'build';
+const COMMAND_UPGRADE = 'upgrade';
+const COMMAND_SELL = 'sell';
+const COMMAND_TARGET = 'target';
+const COMMAND_SEND = 'send';
+
+const EVENT_HIT = 'hit';
+const EVENT_DEATH = 'death';
+const EVENT_CORE_HIT = 'coreHit';
+const EVENT_POD_LANDED = 'podLanded';
+const EVENT_TOWER_FIRED = 'towerFired';
+const EVENT_BULKHEAD_FAILED = 'bulkheadFailed';
+const EVENT_BULKHEAD_CUT = 'bulkheadCut';
+const EVENT_EMP = 'emp';
+
+// Skirmish difficulty scales a commander's economy and tempo; campaign uses 1.0.
+const AI_DIFFICULTIES = Object.freeze({
+  easy: { label: 'Easy', economyPct: 0.75, tempoPct: 1.5, seed: 11 },
+  normal: { label: 'Normal', economyPct: 1.0, tempoPct: 1.0, seed: 23 },
+  hard: { label: 'Hard', economyPct: 1.25, tempoPct: 0.75, seed: 37 },
+});
+const AI_RULES = Object.freeze({
+  thinkIntervalS: 1,
+  coverageRangeTiles: 3,
+  counterThresholdPct: 0.55,
+  maxTowers: 22,
+  bulkheadAfterTowers: 4,
+  sealVentAfterTowers: 2,
+  upgradeFocusPowerFraction: 0.6,
+  empWorthTowers: 6,
+});
+
+const BREACH_STRATEGY_WEAKEST = 'weakest';
+const BREACH_STRATEGY_RANDOM = 'random';
+const BREACH_STRATEGY_FOCUS = 'focus';
+
+// Personalities drive the same AI; the ladder order is the campaign.
+const COMMANDERS = Object.freeze([
+  {
+    key: 'voss', name: 'Quartermaster Voss', title: 'The Wall', deckKey: 'hydroponics',
+    blurb: 'Builds first, asks questions never. Slow to send, quick to seal corridors. Beat her by out-pressuring a fortress.',
+    taunt: 'Every hatch on this deck answers to me. Knock all you like.',
+    winLine: 'Your reactor was never the point. Your patience was.',
+    loseLine: 'Fine. The deck is yours. Mind the bulkheads on your way in.',
+    economy: { scrapIncomePct: 1.0, biomassRegenPct: 0.8 },
+    personality: {
+      sendIntervalS: 12, sendBurst: 1, buildIntervalS: 3, upgradeReserve: 150, bulkheadChancePct: 0.15, counterStrength: 1.5,
+      breachStrategy: BREACH_STRATEGY_WEAKEST, pressureCoreFraction: 0.3,
+      buildWeights: { sentry: 3, arc: 2, mortar: 1, cryo: 2, flamer: 1 },
+      sendWeights: { shamblers: 3, lurchers: 1, carapace: 2, wispforms: 1, bloater: 1, reclaimer: 1, emp: 0.5, breacher: 0.5 },
+    },
+  },
+  {
+    key: 'rook', name: 'Rook', title: 'The Rush', deckKey: 'cargo',
+    blurb: 'Drops pods in pairs before you have a second turret. Thin on defense. Survive the opening and he folds.',
+    taunt: 'Hope you built fast. I did not build at all.',
+    winLine: 'Told you. Fast beats ready.',
+    loseLine: 'Alright. You held. Nobody holds twice.',
+    economy: { scrapIncomePct: 0.9, biomassRegenPct: 1.3 },
+    personality: {
+      sendIntervalS: 5, sendBurst: 2, buildIntervalS: 6, upgradeReserve: 320, bulkheadChancePct: 0.03, counterStrength: 1,
+      breachStrategy: BREACH_STRATEGY_RANDOM, pressureCoreFraction: 0.5,
+      buildWeights: { sentry: 4, arc: 1, mortar: 2, cryo: 1, flamer: 1 },
+      sendWeights: { shamblers: 3, lurchers: 4, carapace: 1, wispforms: 2, bloater: 1, reclaimer: 0.5, emp: 1, breacher: 0.5 },
+    },
+  },
+  {
+    key: 'marrow', name: 'Dr. Ilse Marrow', title: 'The Mirror', deckKey: 'medbay',
+    blurb: 'Reads your deck and sends exactly what it cannot kill. Mix kinetic and energy or she will find the gap.',
+    taunt: 'I have catalogued every gun you own. None of them are the right one.',
+    winLine: 'A predictable defense is a diagnosis, not a plan.',
+    loseLine: 'Interesting. You changed. Most do not.',
+    economy: { scrapIncomePct: 1.05, biomassRegenPct: 1.05 },
+    personality: {
+      sendIntervalS: 8, sendBurst: 1, buildIntervalS: 4, upgradeReserve: 200, bulkheadChancePct: 0.08, counterStrength: 5,
+      breachStrategy: BREACH_STRATEGY_WEAKEST, pressureCoreFraction: 0.4,
+      buildWeights: { sentry: 2, arc: 2, mortar: 2, cryo: 2, flamer: 2 },
+      sendWeights: { shamblers: 2, lurchers: 2, carapace: 2, wispforms: 2, bloater: 2, reclaimer: 1, emp: 1.5, breacher: 1 },
+    },
+  },
+  {
+    key: 'choir', name: 'The Choir', title: 'The Flood', deckKey: 'cryo',
+    blurb: 'A lattice that speaks with many mouths. Endless shamblers and bloaters. Splash damage or drown.',
+    taunt: 'We are not many. We are one, repeated.',
+    winLine: 'Join the verse.',
+    loseLine: 'A silence. We will learn its shape.',
+    economy: { scrapIncomePct: 1.0, biomassRegenPct: 1.5 },
+    personality: {
+      sendIntervalS: 6, sendBurst: 2, buildIntervalS: 4, upgradeReserve: 220, bulkheadChancePct: 0.1, counterStrength: 1,
+      breachStrategy: BREACH_STRATEGY_FOCUS, pressureCoreFraction: 0.5,
+      buildWeights: { sentry: 2, arc: 1, mortar: 3, cryo: 1, flamer: 3 },
+      sendWeights: { shamblers: 6, lurchers: 1, carapace: 0.5, wispforms: 0.5, bloater: 4, reclaimer: 0.5, emp: 0.5, breacher: 1 },
+    },
+  },
+  {
+    key: 'kell', name: 'Warden Kell', title: 'The Salvage King', deckKey: 'engineering',
+    blurb: 'The crew that found the lattice first. Full economy, full roster, reclaimers on a timer, and he never stops leaning on one breach.',
+    taunt: 'This ship was mine before it died. It is still mine.',
+    winLine: 'Salvage rights, enforced.',
+    loseLine: 'Take it. The lattice was always going to outlive us both.',
+    economy: { scrapIncomePct: 1.3, biomassRegenPct: 1.4 },
+    personality: {
+      sendIntervalS: 6, sendBurst: 2, buildIntervalS: 3, upgradeReserve: 140, bulkheadChancePct: 0.12, counterStrength: 3,
+      breachStrategy: BREACH_STRATEGY_FOCUS, pressureCoreFraction: 0.5,
+      buildWeights: { sentry: 3, arc: 3, mortar: 2, cryo: 2, flamer: 2 },
+      sendWeights: { shamblers: 2, lurchers: 2, carapace: 2, wispforms: 2, bloater: 2, reclaimer: 3, emp: 2, breacher: 1.5 },
+    },
+  },
+]);
+const CAMPAIGN_STORAGE_KEY = 'deadlight.campaign';
+const FOCUS_REEVALUATE_S = 60;
+const BANNER_TTL_S = 4.5;
+
+const PHASE_MENU = 'menu';
+const PHASE_PLAYING = 'playing';
+const PHASE_PAUSED = 'paused';
+const PHASE_ENDED = 'ended';
+
+const MENU_KIND_BUILD = 'build';
+const MENU_KIND_TOWER = 'tower';
+const MENU_ACTION_BUILD = 'build';
+const MENU_ACTION_UPGRADE = 'upgrade';
+const MENU_ACTION_SELL = 'sell';
+const MENU_ACTION_TARGET = 'target';
+const MENU_LAYOUT = Object.freeze({
+  ringRadiusPx: 56,
+  buildButtonHalfPx: 21,
+  pillHalfWidthPx: 58,
+  pillHalfHeightPx: 14,
+  pillOffsetPx: 46,
+  pillSideOffsetPx: 96,
+  chamferPx: 5,
+  iconScale: 0.7,
+  labelFontPx: 12,
+  edgeMarginPx: 4,
+});
+const BUILD_MENU_ANGLES = Object.freeze([-Math.PI / 2, -Math.PI / 2 + (Math.PI * 2) / 5, -Math.PI / 2 + (Math.PI * 4) / 5, -Math.PI / 2 + (Math.PI * 6) / 5, -Math.PI / 2 + (Math.PI * 8) / 5]);
+
+const PALETTE = Object.freeze({
+  outline: '#0b0d10',
+  deckLight: '#3a4149',
+  deckDark: '#262b31',
+  deckPanelLine: 'rgba(0, 0, 0, 0.25)',
+  deckRivet: 'rgba(255, 255, 255, 0.12)',
+  corridorFloor: '#1b1f24',
+  corridorGrate: 'rgba(255, 255, 255, 0.06)',
+  corridorEdgeLight: '#f2a93b',
+  corridorEdgeLightDim: 'rgba(242, 169, 59, 0.35)',
+  wall: '#4a525c',
+  wallShade: '#2a3038',
+  wallTop: '#5c656f',
+  machine: '#5a4636',
+  machineShade: '#3a2c22',
+  machineLight: '#57d3ff',
+  breachHatch: '#2f353c',
+  breachStripe: '#f2a93b',
+  breachStripeDark: '#1b1f24',
+  breachMarker: 'rgba(142, 224, 107, 0.85)',
+  breachMarkerHover: '#8ee06b',
+  sabotageMarker: 'rgba(87, 211, 255, 0.9)',
+  cutterMarker: 'rgba(255, 140, 58, 0.9)',
+  ductGlow: 'rgba(142, 224, 107, 0.25)',
+  star: '#f4f0ff',
+  bannerFill: 'rgba(15, 18, 22, 0.88)',
+  bannerText: '#f2a93b',
+  bannerSub: '#d7dde5',
+  coreRing: '#57d3ff',
+  coreGlow: 'rgba(87, 211, 255, 0.35)',
+  coreHousing: '#3a4149',
+  coreDanger: '#e2513f',
+  seam: 'rgba(87, 211, 255, 0.18)',
+  rivalTint: 'rgba(226, 81, 63, 0.05)',
+  lampGlow: 'rgba(242, 169, 59, 0.14)',
+  shadow: 'rgba(0, 0, 0, 0.45)',
+  highlight: 'rgba(255, 255, 255, 0.18)',
+  towerBase: '#5b636d',
+  towerBaseLight: '#7a838e',
+  towerBaseDark: '#343a41',
+  towerPlate: '#2c3239',
+  hpBarBack: '#101317',
+  hpBarFront: '#8ee06b',
+  hpBarSlow: '#9fdcff',
+  hpBarBurn: '#ff8c3a',
+  hoverValid: 'rgba(87, 211, 255, 0.35)',
+  hoverInvalid: 'rgba(226, 81, 63, 0.35)',
+  rangeRing: 'rgba(215, 221, 229, 0.4)',
+  losVisible: 'rgba(142, 224, 107, 0.7)',
+  losBlocked: 'rgba(226, 81, 63, 0.85)',
+  round: '#ffd36b',
+  arcBolt: '#57d3ff',
+  arcCore: '#ffffff',
+  shell: '#1b1f24',
+  shellShine: '#6b6f78',
+  shard: '#d9f2ff',
+  flame: '#ff8c3a',
+  flameCore: '#ffd36b',
+  muzzleFlash: '#ffd36b',
+  slowTint: 'rgba(159, 220, 255, 0.5)',
+  burnTint: 'rgba(255, 140, 58, 0.45)',
+  biomassGlow: 'rgba(142, 224, 107, 0.3)',
+  eye: '#e8f3ff',
+  eyeGlow: '#8ee06b',
+  pod: '#3a4149',
+  podFin: '#f2a93b',
+  podFlame: '#ff8c3a',
+  podMarker: 'rgba(226, 81, 63, 0.8)',
+  floatingScrap: '#f2a93b',
+  floatingDamage: '#e2513f',
+  menuFill: 'rgba(15, 18, 22, 0.94)',
+  menuEdge: '#f2a93b',
+  menuEdgeDisabled: '#2c333c',
+  menuText: '#d7dde5',
+  menuTextDisabled: '#5a6470',
+  menuHighlight: '#57d3ff',
+  menuSell: '#e2513f',
+  cursorFrameShadow: 'rgba(0, 0, 0, 0.5)',
+  playerColor: '#57d3ff',
+  grime: 'rgba(0, 0, 0, 0.12)',
+  splatter: 'rgba(120, 190, 80, 0.35)',
+  splatterDark: 'rgba(60, 110, 40, 0.4)',
+  rimLight: 'rgba(255, 255, 255, 0.28)',
+  pipe: '#5a6470',
+  pipeDark: '#343b43',
+  ventCover: '#20252b',
+  ventSlat: '#0f1216',
+  ventFrame: '#4a525c',
+  hatchSealed: '#3a2226',
+  hatchSealedLight: '#e2513f',
+  bone: '#e6dcc8',
+  flesh: '#9b4a46',
+  fleshDark: '#5e2a28',
+  empArc: '#57d3ff',
+  disabledTint: 'rgba(10, 12, 16, 0.55)',
+  integrityBar: '#f2a93b',
+  tooltipFill: 'rgba(15, 18, 22, 0.96)',
+  tooltipEdge: '#57d3ff',
+  tooltipTitle: '#f2a93b',
+  tooltipText: '#d7dde5',
+  tooltipDim: '#8a95a3',
+  powerBar: '#57d3ff',
+});
+
+const DRAW_SIZES = Object.freeze({
+  outlineWidthPx: 2.2,
+  corridorInsetPx: 4,
+  corridorLightLengthPx: 10,
+  wallHeightPx: 8,
+  machineHeightPx: 10,
+  coreRadiusPx: 18,
+  breachMarkerRadiusPx: 14,
+  towerBaseHalfPx: 17,
+  towerHeightPx: 6,
+  towerTurretRadiusPx: 11,
+  towerLevelPipPx: 4,
+  hpBarWidthPx: 24,
+  hpBarHeightPx: 4,
+  hpBarOffsetPx: 6,
+  eyeSizePx: 3,
+  creepBobAmplitudePx: 1.2,
+  creepBobRateHz: 4,
+  roundLengthPx: 10,
+  shellRadiusPx: 6,
+  shardRadiusPx: 5,
+  flameRadiusPx: 7,
+  sparkSizePx: 3,
+  floatingTextFontPx: 14,
+  floatingTextRiseSpeedPxPerS: 30,
+  floatingTextTtlS: 0.9,
+  hitEffectTtlS: 0.3,
+  deathEffectTtlS: 0.45,
+  sparkTtlS: 0.35,
+  sparkSpeedPxPerS: 90,
+  sparksPerHit: 4,
+  podShadowMaxRadiusPx: 22,
+  podDropHeightPx: 260,
+  podSizePx: 14,
+  losLineWidthPx: 1.5,
+  cursorLineWidthPx: 3,
+  lampRadiusPx: 70,
+  seamWidthPx: 3,
+  tooltipWidthPx: 220,
+  tooltipLineHeightPx: 16,
+  tooltipPaddingPx: 10,
+  tooltipFontPx: 12,
+  tooltipTitleFontPx: 14,
+  grimePerMap: 60,
+  splatterPerBreach: 7,
+  ventSlatSpacingPx: 6,
+  bannerHalfWidthPx: 300,
+  bannerHalfHeightPx: 40,
+  bannerTitleFontPx: 22,
+  bannerSubFontPx: 15,
+  orbitRadiusPx: 15,
+  orbitRateHz: 0.9,
+  lavaPulseRateHz: 0.5,
+});
+
+
+// ===========================================================================
+// SIMULATION (pure: no DOM, no canvas, no Math.random; fixed tick; commands in,
+// state and events out). This module is what a Node server would run as well.
+// ===========================================================================
+
+function isInsideGrid(col, row) {
+  return col >= 0 && row >= 0 && col < GRID_COLUMNS && row < GRID_ROWS;
+}
+
+function tileCenterX(col) {
+  return col * TILE_SIZE_PX + HALF_TILE_PX;
+}
+
+function tileCenterY(row) {
+  return row * TILE_SIZE_PX + HALF_TILE_PX;
+}
+
+function distanceBetween(ax, ay, bx, by) {
+  return Math.hypot(bx - ax, by - ay);
+}
+
+function tileKey(col, row) {
+  return row * GRID_COLUMNS + col;
+}
+
+function sideOfColumn(col) {
+  return col < HALF_COLUMNS ? SIDE_PORT : SIDE_STARBOARD;
+}
+
+const NEIGHBOR_OFFSETS = Object.freeze([
+  { col: 1, row: 0 }, { col: -1, row: 0 }, { col: 0, row: 1 }, { col: 0, row: -1 },
+]);
+
+class StationMap {
+  constructor(halfLayout) {
+    if (halfLayout.length !== GRID_ROWS) throw new Error(`Station layout must have ${GRID_ROWS} rows`);
+    this.layout = halfLayout.map((rowText) => {
+      if (rowText.length !== HALF_COLUMNS) throw new Error(`Station layout rows must have ${HALF_COLUMNS} columns`);
+      return rowText + [...rowText].reverse().join('');
+    });
+    this.coresBySide = [this.findTilesOnSide(TILE_CORE, SIDE_PORT)[0], this.findTilesOnSide(TILE_CORE, SIDE_STARBOARD)[0]];
+    if (!this.coresBySide[0] || !this.coresBySide[1]) throw new Error('Station layout needs a core on each side');
+    this.breachesBySide = [this.findBreachesOnSide(SIDE_PORT), this.findBreachesOnSide(SIDE_STARBOARD)];
+    if (this.breachesBySide[0].length === 0) throw new Error('Station layout needs at least one breach per side');
+    this.ductPartnerByKey = this.linkDucts();
+  }
+
+  linkDucts() {
+    const partners = new Map();
+    [SIDE_PORT, SIDE_STARBOARD].forEach((side) => {
+      DUCT_TILES.forEach((digit) => {
+        const mouths = this.findTilesOnSide(digit, side);
+        if (mouths.length === 0) return;
+        if (mouths.length !== 2) throw new Error(`Duct ${digit} needs exactly two mouths per side, found ${mouths.length}`);
+        partners.set(tileKey(mouths[0].col, mouths[0].row), mouths[1]);
+        partners.set(tileKey(mouths[1].col, mouths[1].row), mouths[0]);
+      });
+    });
+    return partners;
+  }
+
+  ductPartnerOf(col, row) {
+    return this.ductPartnerByKey.get(tileKey(col, row)) ?? null;
+  }
+
+  findBreachesOnSide(side) {
+    return [...this.findTilesOnSide(TILE_BREACH, side).map((tile) => ({ ...tile, openAtS: 0 })),
+      ...this.findTilesOnSide(TILE_LATE_BREACH, side).map((tile) => ({ ...tile, openAtS: MATCH_RULES.lateBreachOpenS }))];
+  }
+
+  tileAt(col, row) {
+    if (!isInsideGrid(col, row)) return null;
+    return this.layout[row][col];
+  }
+
+  findTilesOnSide(tileKind, side) {
+    const found = [];
+    this.layout.forEach((rowText, row) => {
+      [...rowText].forEach((tile, col) => {
+        if (tile === tileKind && sideOfColumn(col) === side) found.push({ col, row });
+      });
+    });
+    return found;
+  }
+
+  spawnPointForBreach(breach) {
+    const center = { x: tileCenterX(breach.col), y: tileCenterY(breach.row) };
+    if (breach.row === 0) return { x: center.x, y: center.y - MATCH_RULES.offscreenSpawnPx };
+    if (breach.row === GRID_ROWS - 1) return { x: center.x, y: center.y + MATCH_RULES.offscreenSpawnPx };
+    return center;
+  }
+}
+
+// Cost-to-core field over walkable tiles, excluding sealed tiles. Duct mouths
+// are linked with a fixed cost so an open duct reads as a shortcut.
+function buildFlowField(map, core, sealedKeys) {
+  const field = new Int32Array(GRID_COLUMNS * GRID_ROWS).fill(-1);
+  const coreKey = tileKey(core.col, core.row);
+  field[coreKey] = 0;
+  const frontier = [{ col: core.col, row: core.row, cost: 0 }];
+  const settled = new Set();
+  while (frontier.length > 0) {
+    frontier.sort((left, right) => left.cost - right.cost);
+    const current = frontier.shift();
+    const currentKey = tileKey(current.col, current.row);
+    if (settled.has(currentKey)) continue;
+    settled.add(currentKey);
+    const relax = (col, row, stepCost) => {
+      if (!WALKABLE_TILES.has(map.tileAt(col, row)) || sideOfColumn(col) !== sideOfColumn(core.col)) return;
+      const key = tileKey(col, row);
+      if (sealedKeys.has(key)) return;
+      const cost = current.cost + stepCost;
+      if (field[key] !== -1 && field[key] <= cost) return;
+      field[key] = cost;
+      frontier.push({ col, row, cost });
+    };
+    NEIGHBOR_OFFSETS.forEach((offset) => relax(current.col + offset.col, current.row + offset.row, 1));
+    const partner = map.ductPartnerOf(current.col, current.row);
+    if (partner !== null && !sealedKeys.has(currentKey)) relax(partner.col, partner.row, DUCT_EDGE_COST);
+  }
+  return field;
+}
+
+let nextEntityId = 1;
+
+function takeEntityId() {
+  const id = nextEntityId;
+  nextEntityId += 1;
+  return id;
+}
+
+class Creep {
+  constructor(typeKey, side, spawnPoint, startTile, hpMultiplier) {
+    const type = CREEP_TYPES[typeKey];
+    if (!type) throw new Error(`Unknown creep type ${typeKey}`);
+    this.id = takeEntityId();
+    this.typeKey = typeKey;
+    this.type = type;
+    this.side = side;
+    this.maxHp = Math.round(type.hp * hpMultiplier);
+    this.hp = this.maxHp;
+    this.x = spawnPoint.x;
+    this.y = spawnPoint.y;
+    this.angle = 0;
+    this.currentTile = { col: startTile.col, row: startTile.row };
+    this.nextTile = null;
+    this.isInDuct = false;
+    this.hasEnteredStation = false;
+    this.slowPct = 0;
+    this.slowRemainingS = 0;
+    this.burnPerS = 0;
+    this.burnRemainingS = 0;
+    this.burnTickS = 0;
+    this.isAlive = true;
+    this.hasReachedCore = false;
+  }
+
+  get radiusPx() {
+    return this.type.radiusPx;
+  }
+
+  isHidden(map) {
+    return this.isInDuct || DUCT_TILES.has(map.tileAt(Math.floor(this.x / TILE_SIZE_PX), Math.floor(this.y / TILE_SIZE_PX)));
+  }
+
+  remainingDistancePx(field) {
+    const goal = this.nextTile ?? this.currentTile;
+    const tileDistance = field[tileKey(goal.col, goal.row)];
+    if (tileDistance < 0) return Infinity;
+    return tileDistance * TILE_SIZE_PX + distanceBetween(this.x, this.y, tileCenterX(goal.col), tileCenterY(goal.row));
+  }
+
+  chooseNextTile(map, field) {
+    const here = this.currentTile;
+    const hereDistance = field[tileKey(here.col, here.row)];
+    let best = null;
+    let bestDistance = hereDistance < 0 ? Infinity : hereDistance;
+    const consider = (col, row) => {
+      if (!isInsideGrid(col, row)) return;
+      const candidateDistance = field[tileKey(col, row)];
+      if (candidateDistance < 0 || candidateDistance >= bestDistance) return;
+      bestDistance = candidateDistance;
+      best = { col, row };
+    };
+    NEIGHBOR_OFFSETS.forEach((offset) => consider(here.col + offset.col, here.row + offset.row));
+    const partner = map.ductPartnerOf(here.col, here.row);
+    if (partner !== null && field[tileKey(here.col, here.row)] >= 0) consider(partner.col, partner.row);
+    return best;
+  }
+
+  update(deltaS, map, field) {
+    this.updateStatusEffects(deltaS);
+    if (!this.hasEnteredStation) {
+      const entryX = tileCenterX(this.currentTile.col);
+      const entryY = tileCenterY(this.currentTile.row);
+      this.hasEnteredStation = this.moveToward(entryX, entryY, deltaS);
+      return;
+    }
+    if (this.nextTile === null) {
+      this.nextTile = this.chooseNextTile(map, field);
+      if (this.nextTile === null) return;
+      const isAdjacent = Math.abs(this.nextTile.col - this.currentTile.col) + Math.abs(this.nextTile.row - this.currentTile.row) === 1;
+      this.isInDuct = !isAdjacent;
+    }
+    const arrived = this.moveToward(tileCenterX(this.nextTile.col), tileCenterY(this.nextTile.row), deltaS);
+    if (!arrived) return;
+    this.currentTile = this.nextTile;
+    this.nextTile = null;
+    this.isInDuct = false;
+    if (map.tileAt(this.currentTile.col, this.currentTile.row) === TILE_CORE) this.hasReachedCore = true;
+  }
+
+  moveToward(targetX, targetY, deltaS) {
+    const speedPxPerS = this.isInDuct ? DUCT_CRAWL_SPEED_PX_PER_S : this.type.speedPxPerS * (1 - this.slowPct);
+    const stepPx = speedPxPerS * deltaS;
+    const remaining = distanceBetween(this.x, this.y, targetX, targetY);
+    this.angle = Math.atan2(targetY - this.y, targetX - this.x);
+    if (remaining <= stepPx) {
+      this.x = targetX;
+      this.y = targetY;
+      return true;
+    }
+    this.x += Math.cos(this.angle) * stepPx;
+    this.y += Math.sin(this.angle) * stepPx;
+    return false;
+  }
+
+  updateStatusEffects(deltaS) {
+    if (this.slowRemainingS > 0) {
+      this.slowRemainingS -= deltaS;
+      if (this.slowRemainingS <= 0) this.slowPct = 0;
+    }
+    if (this.burnRemainingS > 0) {
+      this.burnRemainingS -= deltaS;
+      this.burnTickS += deltaS;
+      if (this.burnTickS >= MATCH_RULES.burnTickS) {
+        this.burnTickS -= MATCH_RULES.burnTickS;
+        this.takeDamage(this.burnPerS * MATCH_RULES.burnTickS, DAMAGE_ENERGY);
+      }
+      if (this.burnRemainingS <= 0) this.burnPerS = 0;
+      return;
+    }
+    if (this.type.regenHpPerS > 0 && this.hp < this.maxHp) {
+      this.hp = Math.min(this.maxHp, this.hp + this.type.regenHpPerS * deltaS);
+    }
+  }
+
+  takeDamage(amount, damageType) {
+    const resistPct = damageType === DAMAGE_KINETIC ? this.type.kineticResistPct : this.type.energyResistPct;
+    const dealt = amount * (1 - resistPct);
+    this.hp -= dealt;
+    if (this.hp <= 0) this.isAlive = false;
+    return dealt;
+  }
+
+  applySlow(slowPct, durationS) {
+    if (slowPct <= 0 || this.type.isSlowImmune) return;
+    this.slowPct = Math.max(this.slowPct, slowPct);
+    this.slowRemainingS = Math.max(this.slowRemainingS, durationS);
+  }
+
+  applyBurn(burnPerS, durationS) {
+    if (burnPerS <= 0) return;
+    this.burnPerS = Math.max(this.burnPerS, burnPerS);
+    this.burnRemainingS = Math.max(this.burnRemainingS, durationS);
+  }
+}
+
+class Tower {
+  constructor(typeKey, col, row, side) {
+    const type = TOWER_TYPES[typeKey];
+    if (!type) throw new Error(`Unknown tower type ${typeKey}`);
+    this.id = takeEntityId();
+    this.typeKey = typeKey;
+    this.type = type;
+    this.col = col;
+    this.row = row;
+    this.x = tileCenterX(col);
+    this.y = tileCenterY(row);
+    this.side = side;
+    this.level = 1;
+    this.investedScrap = type.levels[0].cost;
+    this.cooldownS = 0;
+    this.flashS = 0;
+    this.aimAngle = side === SIDE_PORT ? 0 : Math.PI;
+    this.target = null;
+    this.targetMode = TARGET_FIRST;
+    this.disabledS = 0;
+    this.integrityS = type.isBulkhead ? MATCH_RULES.bulkheadLifetimeS : 0;
+  }
+
+  get stats() {
+    return this.type.levels[this.level - 1];
+  }
+
+  get powerDraw() {
+    return this.type.isBulkhead ? 0 : MATCH_RULES.towerPowerByLevel[this.level - 1];
+  }
+
+  get upgradePowerIncrease() {
+    if (!this.canUpgrade) return 0;
+    return MATCH_RULES.towerPowerByLevel[this.level] - MATCH_RULES.towerPowerByLevel[this.level - 1];
+  }
+
+  get isDisabled() {
+    return this.disabledS > 0;
+  }
+
+  get rangePx() {
+    return this.stats.rangeTiles * TILE_SIZE_PX;
+  }
+
+  get canUpgrade() {
+    return !this.type.isBulkhead && this.level < TOWER_MAX_LEVEL;
+  }
+
+  get upgradeCost() {
+    if (!this.canUpgrade) return 0;
+    return this.type.levels[this.level].cost;
+  }
+
+  get sellValue() {
+    return Math.floor(this.investedScrap * MATCH_RULES.sellRefundPct);
+  }
+
+  upgrade() {
+    if (!this.canUpgrade) throw new Error('Tower cannot be upgraded');
+    this.investedScrap += this.upgradeCost;
+    this.level += 1;
+  }
+
+  cycleTargetMode() {
+    const index = TARGET_MODE_ORDER.indexOf(this.targetMode);
+    this.targetMode = TARGET_MODE_ORDER[(index + 1) % TARGET_MODE_ORDER.length];
+  }
+
+  isBetterTarget(candidate, best, field) {
+    if (this.targetMode === TARGET_STRONGEST) return candidate.hp > best.hp;
+    if (this.targetMode === TARGET_LAST) return candidate.remainingDistancePx(field) > best.remainingDistancePx(field);
+    return candidate.remainingDistancePx(field) < best.remainingDistancePx(field);
+  }
+
+  findTarget(creeps, field, hasLineOfSight, map) {
+    let best = null;
+    creeps.forEach((creep) => {
+      if (!creep.isAlive || !creep.hasEnteredStation || creep.isHidden(map)) return;
+      if (distanceBetween(this.x, this.y, creep.x, creep.y) > this.rangePx) return;
+      if (!hasLineOfSight(this.x, this.y, creep.x, creep.y)) return;
+      if (best === null || this.isBetterTarget(creep, best, field)) best = creep;
+    });
+    return best;
+  }
+
+  update(deltaS, creeps, field, hasLineOfSight, map) {
+    if (this.type.isBulkhead) {
+      this.integrityS = Math.max(0, this.integrityS - deltaS);
+      return null;
+    }
+    this.cooldownS = Math.max(0, this.cooldownS - deltaS);
+    this.flashS = Math.max(0, this.flashS - deltaS);
+    if (this.disabledS > 0) {
+      this.disabledS = Math.max(0, this.disabledS - deltaS);
+      this.target = null;
+      return null;
+    }
+    this.target = this.findTarget(creeps, field, hasLineOfSight, map);
+    if (this.target === null) return null;
+    this.aimAngle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+    if (this.cooldownS > 0) return null;
+    this.cooldownS = 1 / this.stats.attacksPerS;
+    this.flashS = 0.12;
+    return new Projectile(this, this.target);
+  }
+}
+
+class Projectile {
+  constructor(tower, target) {
+    const stats = tower.stats;
+    this.id = takeEntityId();
+    this.kind = tower.type.projectileKind;
+    this.damage = stats.damage;
+    this.damageType = tower.type.damageType;
+    this.splashRadiusPx = tower.type.splashRadiusPx;
+    this.slowPct = stats.slowPct;
+    this.slowDurationS = tower.type.slowDurationS;
+    this.burnPerS = stats.burnPerS;
+    this.burnDurationS = tower.type.burnDurationS;
+    this.side = tower.side;
+    this.speedPxPerS = tower.type.projectileSpeedPxPerS;
+    this.maxTravelPx = tower.rangePx + TILE_SIZE_PX;
+    this.traveledPx = 0;
+    this.x = tower.x;
+    this.y = tower.y;
+    this.angle = tower.aimAngle;
+    this.target = target;
+    this.isSpent = false;
+  }
+
+  update(deltaS) {
+    if (this.target !== null && this.target.isAlive) {
+      this.angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+    }
+    const stepPx = this.speedPxPerS * deltaS;
+    this.x += Math.cos(this.angle) * stepPx;
+    this.y += Math.sin(this.angle) * stepPx;
+    this.traveledPx += stepPx;
+    const margin = MATCH_RULES.despawnMarginPx;
+    if (this.traveledPx > this.maxTravelPx || this.x < -margin || this.y < -margin || this.x > CANVAS_WIDTH_PX + margin || this.y > CANVAS_HEIGHT_PX + margin) {
+      this.isSpent = true;
+    }
+  }
+
+  findCollision(creeps) {
+    return creeps.find((creep) => creep.isAlive
+      && distanceBetween(this.x, this.y, creep.x, creep.y) <= creep.radiusPx + MATCH_RULES.projectileRadiusPx) ?? null;
+  }
+}
+
+class Pod {
+  constructor(card, targetSide, breachIndex, landingX, landingY, launchedBySide) {
+    this.id = takeEntityId();
+    this.card = card;
+    this.targetSide = targetSide;
+    this.breachIndex = breachIndex;
+    this.x = landingX;
+    this.y = landingY;
+    this.launchedBySide = launchedBySide;
+    this.remainingS = MATCH_RULES.podFlightS;
+  }
+}
+
+function createSideState(map, side, scrapIncomePct, biomassRegenPct) {
+  return {
+    side,
+    coreHp: MATCH_RULES.coreHp,
+    scrap: MATCH_RULES.startingScrap,
+    biomass: MATCH_RULES.startingBiomass,
+    scrapIncomePct,
+    biomassRegenPct,
+    incomeTimerS: 0,
+    towers: [],
+    creeps: [],
+    projectiles: [],
+    incomingPods: [],
+    spawnQueue: [],
+    cardCooldowns: {},
+    sealedKeys: new Set(),
+    field: buildFlowField(map, map.coresBySide[side], new Set()),
+    sentHistory: {},
+    ecoRegenPerS: 0,
+  };
+}
+
+class Simulation {
+  constructor(map, sideOptions) {
+    this.map = map;
+    this.sides = [
+      createSideState(map, SIDE_PORT, sideOptions[SIDE_PORT].scrapIncomePct, sideOptions[SIDE_PORT].biomassRegenPct),
+      createSideState(map, SIDE_STARBOARD, sideOptions[SIDE_STARBOARD].scrapIncomePct, sideOptions[SIDE_STARBOARD].biomassRegenPct),
+    ];
+    this.clockS = 0;
+    this.suddenDeathTimerS = 0;
+    this.isOver = false;
+    this.winnerSide = null;
+    this.events = [];
+  }
+
+  get isSuddenDeath() {
+    return this.clockS >= MATCH_RULES.suddenDeathAtS;
+  }
+
+  opponentOf(side) {
+    return side === SIDE_PORT ? SIDE_STARBOARD : SIDE_PORT;
+  }
+
+  get elapsedMinutes() {
+    return this.clockS / 60;
+  }
+
+  get creepHpMultiplier() {
+    return 1 + MATCH_RULES.escalationHpPctPerMin * this.elapsedMinutes;
+  }
+
+  get biomassCap() {
+    return MATCH_RULES.biomassCap + MATCH_RULES.biomassCapPerMin * this.elapsedMinutes;
+  }
+
+  biomassRegenFor(state) {
+    return MATCH_RULES.biomassRegenPerS * state.biomassRegenPct * (1 + MATCH_RULES.escalationRegenPctPerMin * this.elapsedMinutes) + state.ecoRegenPerS;
+  }
+
+  powerUsed(state) {
+    return state.towers.reduce((sum, tower) => sum + tower.powerDraw, 0);
+  }
+
+  isBreachOpen(side, breachIndex) {
+    const breach = this.map.breachesBySide[side][breachIndex];
+    if (!breach) return false;
+    return this.clockS >= breach.openAtS;
+  }
+
+  towerAt(col, row) {
+    const side = sideOfColumn(col);
+    return this.sides[side].towers.find((tower) => tower.col === col && tower.row === row) ?? null;
+  }
+
+  tileBlocksSight(col, row) {
+    if (SIGHT_BLOCKING_TILES.has(this.map.tileAt(col, row))) return true;
+    if (!isInsideGrid(col, row)) return false;
+    return this.sides[sideOfColumn(col)].sealedKeys.has(tileKey(col, row));
+  }
+
+  // Amanatides-Woo traversal against static walls and player-sealed corridors.
+  hasLineOfSight(fromX, fromY, toX, toY) {
+    const endCol = Math.floor(toX / TILE_SIZE_PX);
+    const endRow = Math.floor(toY / TILE_SIZE_PX);
+    let col = Math.floor(fromX / TILE_SIZE_PX);
+    let row = Math.floor(fromY / TILE_SIZE_PX);
+    const deltaX = toX - fromX;
+    const deltaY = toY - fromY;
+    const stepCol = deltaX > 0 ? 1 : -1;
+    const stepRow = deltaY > 0 ? 1 : -1;
+    const travelPerColumn = deltaX === 0 ? Infinity : Math.abs(TILE_SIZE_PX / deltaX);
+    const travelPerRow = deltaY === 0 ? Infinity : Math.abs(TILE_SIZE_PX / deltaY);
+    const distanceToColumnEdge = deltaX > 0 ? (col + 1) * TILE_SIZE_PX - fromX : fromX - col * TILE_SIZE_PX;
+    const distanceToRowEdge = deltaY > 0 ? (row + 1) * TILE_SIZE_PX - fromY : fromY - row * TILE_SIZE_PX;
+    let nextColumnCrossing = deltaX === 0 ? Infinity : distanceToColumnEdge / Math.abs(deltaX);
+    let nextRowCrossing = deltaY === 0 ? Infinity : distanceToRowEdge / Math.abs(deltaY);
+    for (let step = 0; step < RAYCAST_MAX_STEPS; step += 1) {
+      if (col === endCol && row === endRow) return true;
+      if (nextColumnCrossing < nextRowCrossing) {
+        col += stepCol;
+        nextColumnCrossing += travelPerColumn;
+      } else {
+        row += stepRow;
+        nextRowCrossing += travelPerRow;
+      }
+      if (this.tileBlocksSight(col, row)) return false;
+    }
+    return true;
+  }
+
+  // ---- placement rules -----------------------------------------------------
+
+  canBuildAt(side, col, row, typeKey) {
+    const type = TOWER_TYPES[typeKey];
+    if (!type) throw new Error(`Unknown tower type ${typeKey}`);
+    if (!isInsideGrid(col, row) || sideOfColumn(col) !== side) return false;
+    if (this.towerAt(col, row) !== null) return false;
+    const tile = this.map.tileAt(col, row);
+    if (type.isBulkhead) {
+      if (!SEALABLE_TILES.has(tile)) return false;
+      if (this.sides[side].towers.filter((tower) => tower.type.isBulkhead).length >= MATCH_RULES.bulkheadCap) return false;
+      return this.wouldKeepBreachesConnected(side, col, row);
+    }
+    if (tile !== TILE_DECK) return false;
+    return this.powerUsed(this.sides[side]) + MATCH_RULES.towerPowerByLevel[0] <= MATCH_RULES.reactorPowerCap;
+  }
+
+  canUpgradeTower(state, tower) {
+    if (!tower.canUpgrade) return false;
+    return this.powerUsed(state) + tower.upgradePowerIncrease <= MATCH_RULES.reactorPowerCap;
+  }
+
+  wouldKeepBreachesConnected(side, col, row) {
+    const sealed = new Set(this.sides[side].sealedKeys);
+    sealed.add(tileKey(col, row));
+    const field = buildFlowField(this.map, this.map.coresBySide[side], sealed);
+    const breachesOpen = this.map.breachesBySide[side].every((breach) => field[tileKey(breach.col, breach.row)] >= 0);
+    const creepsStranded = this.sides[side].creeps.some((creep) => creep.hasEnteredStation && field[tileKey(creep.currentTile.col, creep.currentTile.row)] < 0);
+    return breachesOpen && !creepsStranded;
+  }
+
+  isSealableTile(col, row) {
+    return SEALABLE_TILES.has(this.map.tileAt(col, row));
+  }
+
+  // ---- commands --------------------------------------------------------------
+
+  applyCommand(command) {
+    const state = this.sides[command.side];
+    if (!state) throw new Error(`Unknown side ${command.side}`);
+    if (command.type === COMMAND_BUILD) return this.build(state, command.col, command.row, command.typeKey);
+    if (command.type === COMMAND_UPGRADE) return this.upgrade(state, command.col, command.row);
+    if (command.type === COMMAND_SELL) return this.sell(state, command.col, command.row);
+    if (command.type === COMMAND_TARGET) return this.cycleTarget(state, command.col, command.row);
+    if (command.type === COMMAND_SEND) return this.send(state, command.cardKey, command.target);
+    throw new Error(`Unknown command ${command.type}`);
+  }
+
+  build(state, col, row, typeKey) {
+    if (!this.canBuildAt(state.side, col, row, typeKey)) return false;
+    const cost = TOWER_TYPES[typeKey].levels[0].cost;
+    if (state.scrap < cost) return false;
+    state.scrap -= cost;
+    const tower = new Tower(typeKey, col, row, state.side);
+    state.towers.push(tower);
+    if (tower.type.isBulkhead) {
+      state.sealedKeys.add(tileKey(col, row));
+      this.rebuildField(state);
+    }
+    return true;
+  }
+
+  ownTowerAt(state, col, row) {
+    const tower = this.towerAt(col, row);
+    if (tower === null || tower.side !== state.side) return null;
+    return tower;
+  }
+
+  upgrade(state, col, row) {
+    const tower = this.ownTowerAt(state, col, row);
+    if (tower === null || !this.canUpgradeTower(state, tower) || state.scrap < tower.upgradeCost) return false;
+    state.scrap -= tower.upgradeCost;
+    tower.upgrade();
+    return true;
+  }
+
+  sell(state, col, row) {
+    const tower = this.ownTowerAt(state, col, row);
+    if (tower === null) return false;
+    state.scrap += tower.sellValue;
+    state.towers = state.towers.filter((candidate) => candidate !== tower);
+    if (tower.type.isBulkhead) {
+      state.sealedKeys.delete(tileKey(col, row));
+      this.rebuildField(state);
+    }
+    return true;
+  }
+
+  cycleTarget(state, col, row) {
+    const tower = this.ownTowerAt(state, col, row);
+    if (tower === null || tower.type.isBulkhead) return false;
+    tower.cycleTargetMode();
+    return true;
+  }
+
+  // target is { kind: SEND_TARGET_BREACH, breachIndex } for creep pods or
+  // { kind: SEND_TARGET_POINT, col, row } for sabotage pods.
+  send(state, cardKey, target) {
+    const card = SEND_CARDS.find((candidate) => candidate.key === cardKey);
+    if (!card) throw new Error(`Unknown card ${cardKey}`);
+    const targetSide = this.opponentOf(state.side);
+    let breachIndex = null;
+    let landingX = 0;
+    let landingY = 0;
+    if (card.kind === CARD_KIND_CREEPS) {
+      if (!target || target.kind !== SEND_TARGET_BREACH || !this.isBreachOpen(targetSide, target.breachIndex)) return false;
+      breachIndex = target.breachIndex;
+      const breach = this.map.breachesBySide[targetSide][breachIndex];
+      landingX = tileCenterX(breach.col);
+      landingY = tileCenterY(breach.row);
+    } else {
+      if (!target || target.kind !== SEND_TARGET_POINT || !this.isSabotageTargetable(targetSide, target.col, target.row)) return false;
+      landingX = tileCenterX(target.col);
+      landingY = tileCenterY(target.row);
+    }
+    if ((state.cardCooldowns[cardKey] ?? 0) > 0 || state.biomass < card.biomassCost) return false;
+    state.biomass -= card.biomassCost;
+    state.cardCooldowns[cardKey] = card.cooldownS;
+    state.sentHistory[cardKey] = (state.sentHistory[cardKey] ?? 0) + 1;
+    state.ecoRegenPerS += MATCH_RULES.ecoRegenPerSendPerS;
+    this.sides[targetSide].incomingPods.push(new Pod(card, targetSide, breachIndex, landingX, landingY, state.side));
+    return true;
+  }
+
+  isSabotageTargetable(targetSide, col, row) {
+    if (!isInsideGrid(col, row) || sideOfColumn(col) !== targetSide) return false;
+    return this.map.tileAt(col, row) !== TILE_WALL;
+  }
+
+  rebuildField(state) {
+    state.field = buildFlowField(this.map, this.map.coresBySide[state.side], state.sealedKeys);
+    state.creeps.forEach((creep) => {
+      if (creep.nextTile !== null && state.field[tileKey(creep.nextTile.col, creep.nextTile.row)] < 0) creep.nextTile = null;
+    });
+  }
+
+  // ---- stepping --------------------------------------------------------------
+
+  step(deltaS, commands) {
+    this.events = [];
+    if (this.isOver) return this.events;
+    commands.forEach((command) => this.applyCommand(command));
+    this.clockS += deltaS;
+    this.sides.forEach((state) => this.stepSide(state, deltaS));
+    this.stepSuddenDeath(deltaS);
+    this.checkVictory();
+    return this.events;
+  }
+
+  stepSide(state, deltaS) {
+    this.stepEconomy(state, deltaS);
+    this.stepPods(state, deltaS);
+    this.stepSpawnQueue(state, deltaS);
+    this.stepTowers(state, deltaS);
+    this.stepProjectiles(state, deltaS);
+    this.stepCreeps(state, deltaS);
+  }
+
+  stepEconomy(state, deltaS) {
+    state.biomass = Math.min(this.biomassCap, state.biomass + this.biomassRegenFor(state) * deltaS);
+    state.incomeTimerS += deltaS;
+    if (state.incomeTimerS >= MATCH_RULES.scrapIncomeIntervalS) {
+      state.incomeTimerS -= MATCH_RULES.scrapIncomeIntervalS;
+      state.scrap += Math.round(MATCH_RULES.scrapIncome * state.scrapIncomePct);
+    }
+    Object.keys(state.cardCooldowns).forEach((cardKey) => {
+      state.cardCooldowns[cardKey] = Math.max(0, state.cardCooldowns[cardKey] - deltaS);
+    });
+  }
+
+  stepPods(state, deltaS) {
+    state.incomingPods.forEach((pod) => {
+      pod.remainingS -= deltaS;
+      if (pod.remainingS > 0) return;
+      this.events.push({ type: EVENT_POD_LANDED, x: pod.x, y: pod.y, side: state.side });
+      if (pod.card.kind === CARD_KIND_EMP) this.detonateEmp(state, pod.x, pod.y);
+      else if (pod.card.kind === CARD_KIND_BREACHER) this.cutNearestBulkhead(state, pod.x, pod.y);
+      else {
+        const breach = this.map.breachesBySide[state.side][pod.breachIndex];
+        for (let index = 0; index < pod.card.count; index += 1) {
+          state.spawnQueue.push({ typeKey: pod.card.creepTypeKey, breach, delayS: index * pod.card.spacingS });
+        }
+      }
+    });
+    state.incomingPods = state.incomingPods.filter((pod) => pod.remainingS > 0);
+  }
+
+  detonateEmp(state, x, y) {
+    state.towers.forEach((tower) => {
+      if (tower.type.isBulkhead || distanceBetween(x, y, tower.x, tower.y) > MATCH_RULES.empRadiusPx) return;
+      tower.disabledS = MATCH_RULES.empDurationS;
+    });
+    this.events.push({ type: EVENT_EMP, x, y, radiusPx: MATCH_RULES.empRadiusPx });
+  }
+
+  cutNearestBulkhead(state, x, y) {
+    const bulkheads = state.towers.filter((tower) => tower.type.isBulkhead);
+    if (bulkheads.length === 0) return;
+    const nearest = bulkheads.sort((left, right) => distanceBetween(x, y, left.x, left.y) - distanceBetween(x, y, right.x, right.y))[0];
+    this.removeBulkhead(state, nearest);
+    this.events.push({ type: EVENT_BULKHEAD_CUT, x: nearest.x, y: nearest.y });
+  }
+
+  removeBulkhead(state, bulkhead) {
+    state.towers = state.towers.filter((candidate) => candidate !== bulkhead);
+    state.sealedKeys.delete(tileKey(bulkhead.col, bulkhead.row));
+    this.rebuildField(state);
+  }
+
+  stepSpawnQueue(state, deltaS) {
+    state.spawnQueue.forEach((entry) => { entry.delayS -= deltaS; });
+    state.spawnQueue.filter((entry) => entry.delayS <= 0).forEach((entry) => {
+      state.creeps.push(new Creep(entry.typeKey, state.side, this.map.spawnPointForBreach(entry.breach), entry.breach, this.creepHpMultiplier));
+    });
+    state.spawnQueue = state.spawnQueue.filter((entry) => entry.delayS > 0);
+  }
+
+  stepTowers(state, deltaS) {
+    const hasLineOfSight = (fromX, fromY, toX, toY) => this.hasLineOfSight(fromX, fromY, toX, toY);
+    state.towers.forEach((tower) => {
+      const projectile = tower.update(deltaS, state.creeps, state.field, hasLineOfSight, this.map);
+      if (projectile === null) return;
+      state.projectiles.push(projectile);
+      this.events.push({ type: EVENT_TOWER_FIRED, x: tower.x, y: tower.y, towerTypeKey: tower.typeKey });
+    });
+    state.towers.filter((tower) => tower.type.isBulkhead && tower.integrityS <= 0).forEach((bulkhead) => {
+      this.removeBulkhead(state, bulkhead);
+      this.events.push({ type: EVENT_BULKHEAD_FAILED, x: bulkhead.x, y: bulkhead.y });
+    });
+  }
+
+  stepProjectiles(state, deltaS) {
+    state.projectiles.forEach((projectile) => {
+      projectile.update(deltaS);
+      if (projectile.isSpent) return;
+      const struck = projectile.findCollision(state.creeps);
+      if (struck === null) return;
+      projectile.isSpent = true;
+      this.resolveHit(state, projectile, struck);
+    });
+    state.projectiles = state.projectiles.filter((projectile) => !projectile.isSpent);
+  }
+
+  resolveHit(state, projectile, struck) {
+    const victims = projectile.splashRadiusPx > 0
+      ? state.creeps.filter((creep) => creep.isAlive && distanceBetween(projectile.x, projectile.y, creep.x, creep.y) <= projectile.splashRadiusPx + creep.radiusPx)
+      : [struck];
+    this.events.push({ type: EVENT_HIT, x: projectile.x, y: projectile.y, kind: projectile.kind, splashRadiusPx: projectile.splashRadiusPx });
+    victims.forEach((creep) => {
+      creep.takeDamage(projectile.damage, projectile.damageType);
+      creep.applySlow(projectile.slowPct, projectile.slowDurationS);
+      creep.applyBurn(projectile.burnPerS, projectile.burnDurationS);
+    });
+  }
+
+  stepCreeps(state, deltaS) {
+    const born = [];
+    state.creeps.forEach((creep) => {
+      if (!creep.isAlive) {
+        this.rewardKill(state, creep, born);
+        return;
+      }
+      creep.update(deltaS, this.map, state.field);
+      if (!creep.hasReachedCore) return;
+      creep.isAlive = false;
+      state.coreHp = Math.max(0, state.coreHp - creep.type.coreDamage);
+      this.events.push({ type: EVENT_CORE_HIT, x: creep.x, y: creep.y, damage: creep.type.coreDamage, side: state.side });
+    });
+    state.creeps = state.creeps.filter((creep) => creep.isAlive).concat(born);
+  }
+
+  rewardKill(state, creep, born) {
+    state.scrap += creep.type.scrapBounty;
+    this.events.push({ type: EVENT_DEATH, x: creep.x, y: creep.y, side: state.side, bounty: creep.type.scrapBounty, color: creep.type.bodyColor, radiusPx: creep.radiusPx });
+    if (creep.type.deathSpawn === null) return;
+    for (let index = 0; index < creep.type.deathSpawn.count; index += 1) {
+      const child = new Creep(creep.type.deathSpawn.typeKey, state.side, { x: creep.x, y: creep.y }, creep.currentTile, this.creepHpMultiplier);
+      child.hasEnteredStation = true;
+      born.push(child);
+    }
+  }
+
+  stepSuddenDeath(deltaS) {
+    if (!this.isSuddenDeath) return;
+    this.suddenDeathTimerS += deltaS;
+    if (this.suddenDeathTimerS < MATCH_RULES.suddenDeathDamageIntervalS) return;
+    this.suddenDeathTimerS -= MATCH_RULES.suddenDeathDamageIntervalS;
+    this.sides.forEach((state) => { state.coreHp = Math.max(0, state.coreHp - MATCH_RULES.suddenDeathDamage); });
+  }
+
+  checkVictory() {
+    const portDown = this.sides[SIDE_PORT].coreHp <= 0;
+    const starboardDown = this.sides[SIDE_STARBOARD].coreHp <= 0;
+    if (!portDown && !starboardDown) return;
+    this.isOver = true;
+    if (portDown && starboardDown) this.winnerSide = null;
+    else this.winnerSide = portDown ? SIDE_STARBOARD : SIDE_PORT;
+  }
+}
+
+
+// ===========================================================================
+// SNAPSHOTS (server -> client). hydrate reuses entity instances by id so the
+// renderer keeps animation phase and the menus keep their selections.
+// ===========================================================================
+
+function serializeSimulation(sim) {
+  return {
+    clockS: sim.clockS,
+    suddenDeathTimerS: sim.suddenDeathTimerS,
+    isOver: sim.isOver,
+    winnerSide: sim.winnerSide,
+    sides: sim.sides.map((state) => ({
+      coreHp: state.coreHp,
+      scrap: state.scrap,
+      biomass: state.biomass,
+      incomeTimerS: state.incomeTimerS,
+      ecoRegenPerS: state.ecoRegenPerS,
+      cardCooldowns: state.cardCooldowns,
+      sentHistory: state.sentHistory,
+      sealedKeys: [...state.sealedKeys],
+      towers: state.towers.map((tower) => ({
+        id: tower.id, typeKey: tower.typeKey, col: tower.col, row: tower.row, level: tower.level, targetMode: tower.targetMode,
+        cooldownS: tower.cooldownS, flashS: tower.flashS, aimAngle: tower.aimAngle, disabledS: tower.disabledS, integrityS: tower.integrityS, investedScrap: tower.investedScrap,
+      })),
+      creeps: state.creeps.map((creep) => ({
+        id: creep.id, typeKey: creep.typeKey, x: creep.x, y: creep.y, angle: creep.angle, hp: creep.hp, maxHp: creep.maxHp,
+        currentTile: creep.currentTile, nextTile: creep.nextTile, isInDuct: creep.isInDuct, hasEnteredStation: creep.hasEnteredStation,
+        slowPct: creep.slowPct, slowRemainingS: creep.slowRemainingS, burnPerS: creep.burnPerS, burnRemainingS: creep.burnRemainingS, burnTickS: creep.burnTickS,
+      })),
+      projectiles: state.projectiles.map((projectile) => ({
+        id: projectile.id, kind: projectile.kind, damage: projectile.damage, damageType: projectile.damageType, splashRadiusPx: projectile.splashRadiusPx,
+        slowPct: projectile.slowPct, slowDurationS: projectile.slowDurationS, burnPerS: projectile.burnPerS, burnDurationS: projectile.burnDurationS,
+        speedPxPerS: projectile.speedPxPerS, maxTravelPx: projectile.maxTravelPx, traveledPx: projectile.traveledPx,
+        x: projectile.x, y: projectile.y, angle: projectile.angle, targetId: projectile.target === null ? null : projectile.target.id,
+      })),
+      incomingPods: state.incomingPods.map((pod) => ({
+        id: pod.id, cardKey: pod.card.key, breachIndex: pod.breachIndex, x: pod.x, y: pod.y, launchedBySide: pod.launchedBySide, remainingS: pod.remainingS,
+      })),
+      spawnQueue: state.spawnQueue.map((entry) => ({ typeKey: entry.typeKey, breach: { col: entry.breach.col, row: entry.breach.row }, delayS: entry.delayS })),
+    })),
+  };
+}
+
+function hydrateSimulation(sim, snapshot) {
+  sim.clockS = snapshot.clockS;
+  sim.suddenDeathTimerS = snapshot.suddenDeathTimerS;
+  sim.isOver = snapshot.isOver;
+  sim.winnerSide = snapshot.winnerSide;
+  snapshot.sides.forEach((data, side) => {
+    const state = sim.sides[side];
+    state.coreHp = data.coreHp;
+    state.scrap = data.scrap;
+    state.biomass = data.biomass;
+    state.incomeTimerS = data.incomeTimerS;
+    state.ecoRegenPerS = data.ecoRegenPerS;
+    state.cardCooldowns = { ...data.cardCooldowns };
+    state.sentHistory = { ...data.sentHistory };
+    const previousTowers = new Map(state.towers.map((tower) => [tower.id, tower]));
+    state.towers = data.towers.map((entry) => {
+      const tower = previousTowers.get(entry.id) ?? new Tower(entry.typeKey, entry.col, entry.row, side);
+      tower.id = entry.id;
+      tower.level = entry.level;
+      tower.targetMode = entry.targetMode;
+      tower.cooldownS = entry.cooldownS;
+      tower.flashS = entry.flashS;
+      tower.aimAngle = entry.aimAngle;
+      tower.disabledS = entry.disabledS;
+      tower.integrityS = entry.integrityS;
+      tower.investedScrap = entry.investedScrap;
+      return tower;
+    });
+    const previousCreeps = new Map(state.creeps.map((creep) => [creep.id, creep]));
+    state.creeps = data.creeps.map((entry) => {
+      const creep = previousCreeps.get(entry.id) ?? new Creep(entry.typeKey, side, { x: entry.x, y: entry.y }, entry.currentTile, 1);
+      creep.id = entry.id;
+      creep.x = entry.x;
+      creep.y = entry.y;
+      creep.angle = entry.angle;
+      creep.hp = entry.hp;
+      creep.maxHp = entry.maxHp;
+      creep.currentTile = { ...entry.currentTile };
+      creep.nextTile = entry.nextTile === null ? null : { ...entry.nextTile };
+      creep.isInDuct = entry.isInDuct;
+      creep.hasEnteredStation = entry.hasEnteredStation;
+      creep.slowPct = entry.slowPct;
+      creep.slowRemainingS = entry.slowRemainingS;
+      creep.burnPerS = entry.burnPerS;
+      creep.burnRemainingS = entry.burnRemainingS;
+      creep.burnTickS = entry.burnTickS;
+      creep.isAlive = true;
+      creep.hasReachedCore = false;
+      return creep;
+    });
+    const creepById = new Map(state.creeps.map((creep) => [creep.id, creep]));
+    state.projectiles = data.projectiles.map((entry) => {
+      const projectile = Object.create(Projectile.prototype);
+      Object.assign(projectile, entry, { side, isSpent: false, target: entry.targetId === null ? null : (creepById.get(entry.targetId) ?? null) });
+      delete projectile.targetId;
+      return projectile;
+    });
+    state.incomingPods = data.incomingPods.map((entry) => {
+      const card = SEND_CARDS.find((candidate) => candidate.key === entry.cardKey);
+      const pod = new Pod(card, side, entry.breachIndex, entry.x, entry.y, entry.launchedBySide);
+      pod.id = entry.id;
+      pod.remainingS = entry.remainingS;
+      return pod;
+    });
+    state.spawnQueue = data.spawnQueue.map((entry) => ({ typeKey: entry.typeKey, breach: sim.map.breachesBySide[side].find((breach) => breach.col === entry.breach.col && breach.row === entry.breach.row), delayS: entry.delayS }));
+    state.sealedKeys = new Set(data.sealedKeys);
+    state.field = buildFlowField(sim.map, sim.map.coresBySide[side], state.sealedKeys);
+  });
+}
+
+// ===========================================================================
+// COMMANDER AI (command generator; sits outside the simulation like a player)
+// ===========================================================================
+
+function createSeededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6D2B79F5) >>> 0;
+    let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
+    mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
+    return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function pickWeighted(random, entries) {
+  const total = entries.reduce((sum, entry) => sum + entry.weight, 0);
+  if (total <= 0) return null;
+  let roll = random() * total;
+  for (const entry of entries) {
+    roll -= entry.weight;
+    if (roll <= 0) return entry.value;
+  }
+  return entries[entries.length - 1].value;
+}
+
+function buildAiProfile(commander, difficulty) {
+  const personality = commander.personality;
+  return {
+    sendIntervalS: personality.sendIntervalS * difficulty.tempoPct,
+    sendBurst: personality.sendBurst,
+    buildIntervalS: personality.buildIntervalS * difficulty.tempoPct,
+    upgradeReserve: personality.upgradeReserve,
+    bulkheadChancePct: personality.bulkheadChancePct,
+    counterStrength: personality.counterStrength,
+    breachStrategy: personality.breachStrategy,
+    pressureCoreFraction: personality.pressureCoreFraction,
+    buildWeights: personality.buildWeights,
+    sendWeights: personality.sendWeights,
+    seed: difficulty.seed + commander.key.length,
+  };
+}
+
+class CommanderAi {
+  constructor(side, profile, sim) {
+    this.side = side;
+    this.profile = profile;
+    this.random = createSeededRandom(profile.seed);
+    this.thinkTimerS = 0;
+    this.sendTimerS = 0;
+    this.buildTimerS = 0;
+    this.focusBreachIndex = null;
+    this.focusAgeS = 0;
+    this.rankedDeckTiles = this.rankDeckTiles(sim);
+  }
+
+  rankDeckTiles(sim) {
+    const corridorTiles = [];
+    const deckTiles = [];
+    for (let row = 0; row < GRID_ROWS; row += 1) {
+      for (let col = 0; col < GRID_COLUMNS; col += 1) {
+        if (sideOfColumn(col) !== this.side) continue;
+        const tile = sim.map.tileAt(col, row);
+        if (WALKABLE_TILES.has(tile)) corridorTiles.push({ col, row });
+        if (tile === TILE_DECK) deckTiles.push({ col, row });
+      }
+    }
+    const rangePx = AI_RULES.coverageRangeTiles * TILE_SIZE_PX;
+    return deckTiles
+      .map((tile) => {
+        const x = tileCenterX(tile.col);
+        const y = tileCenterY(tile.row);
+        const coverage = corridorTiles.filter((corridor) => distanceBetween(x, y, tileCenterX(corridor.col), tileCenterY(corridor.row)) <= rangePx
+          && sim.hasLineOfSight(x, y, tileCenterX(corridor.col), tileCenterY(corridor.row))).length;
+        return { ...tile, coverage };
+      })
+      .sort((left, right) => right.coverage - left.coverage);
+  }
+
+  think(deltaS, sim) {
+    this.thinkTimerS += deltaS;
+    this.sendTimerS += deltaS;
+    this.buildTimerS += deltaS;
+    this.focusAgeS += deltaS;
+    if (this.thinkTimerS < AI_RULES.thinkIntervalS) return [];
+    this.thinkTimerS -= AI_RULES.thinkIntervalS;
+    const commands = [];
+    commands.push(...this.planSends(sim));
+    const buildCommand = this.planBuild(sim);
+    if (buildCommand !== null) commands.push(buildCommand);
+    return commands;
+  }
+
+  effectiveSendIntervalS(sim) {
+    const opponent = sim.sides[sim.opponentOf(this.side)];
+    const isPressing = opponent.coreHp <= MATCH_RULES.coreHp * this.profile.pressureCoreFraction;
+    return isPressing ? this.profile.sendIntervalS / 2 : this.profile.sendIntervalS;
+  }
+
+  planSends(sim) {
+    if (this.sendTimerS < this.effectiveSendIntervalS(sim)) return [];
+    const state = sim.sides[this.side];
+    const opponent = sim.sides[sim.opponentOf(this.side)];
+    const commands = [];
+    let biomassLeft = state.biomass;
+    const usedKeys = new Set();
+    for (let burst = 0; burst < this.profile.sendBurst; burst += 1) {
+      const card = this.chooseCard(state, opponent, biomassLeft, usedKeys);
+      if (card === null) break;
+      biomassLeft -= card.biomassCost;
+      usedKeys.add(card.key);
+      commands.push({ side: this.side, type: COMMAND_SEND, cardKey: card.key, target: this.chooseTarget(sim, opponent, card) });
+    }
+    if (commands.length > 0) this.sendTimerS = 0;
+    return commands;
+  }
+
+  chooseCard(state, opponent, biomassLeft, usedKeys) {
+    const affordable = SEND_CARDS.filter((card) => biomassLeft >= card.biomassCost && (state.cardCooldowns[card.key] ?? 0) <= 0 && !usedKeys.has(card.key));
+    if (affordable.length === 0) return null;
+    const kineticShare = this.damageShare(opponent.towers, DAMAGE_KINETIC);
+    const counter = this.profile.counterStrength;
+    const bulkheadCount = opponent.towers.filter((tower) => tower.type.isBulkhead).length;
+    const weaponCount = opponent.towers.length - bulkheadCount;
+    const weights = affordable.map((card) => {
+      let weight = this.profile.sendWeights[card.key] ?? 1;
+      if (kineticShare > AI_RULES.counterThresholdPct && (card.key === 'carapace' || card.key === 'reclaimer')) weight *= counter;
+      if (kineticShare < 1 - AI_RULES.counterThresholdPct && card.key === 'wispforms') weight *= counter;
+      if (card.kind === CARD_KIND_BREACHER) weight *= bulkheadCount === 0 ? 0 : bulkheadCount;
+      if (card.kind === CARD_KIND_EMP) weight *= weaponCount >= AI_RULES.empWorthTowers ? 2 : 0.2;
+      return { value: card, weight };
+    });
+    return pickWeighted(this.random, weights);
+  }
+
+  damageShare(towers, damageType) {
+    const weapons = towers.filter((tower) => !tower.type.isBulkhead);
+    if (weapons.length === 0) return 0.5;
+    const total = weapons.reduce((sum, tower) => sum + tower.stats.damage * tower.stats.attacksPerS, 0);
+    const matching = weapons.filter((tower) => tower.type.damageType === damageType).reduce((sum, tower) => sum + tower.stats.damage * tower.stats.attacksPerS, 0);
+    return total === 0 ? 0.5 : matching / total;
+  }
+
+  chooseTarget(sim, opponent, card) {
+    if (card.kind === CARD_KIND_CREEPS) return { kind: SEND_TARGET_BREACH, breachIndex: this.chooseBreach(sim, opponent) };
+    if (card.kind === CARD_KIND_BREACHER) {
+      const bulkheads = opponent.towers.filter((tower) => tower.type.isBulkhead);
+      const pick = bulkheads[Math.floor(this.random() * bulkheads.length)];
+      return { kind: SEND_TARGET_POINT, col: pick.col, row: pick.row };
+    }
+    const weapons = opponent.towers.filter((tower) => !tower.type.isBulkhead);
+    const densest = weapons
+      .map((tower) => ({ tower, neighbors: weapons.filter((other) => distanceBetween(tower.x, tower.y, other.x, other.y) <= MATCH_RULES.empRadiusPx).length }))
+      .sort((left, right) => right.neighbors - left.neighbors)[0];
+    return { kind: SEND_TARGET_POINT, col: densest.tower.col, row: densest.tower.row };
+  }
+
+  openBreachIndices(sim, opponent) {
+    return sim.map.breachesBySide[opponent.side].map((breach, index) => index).filter((index) => sim.isBreachOpen(opponent.side, index));
+  }
+
+  chooseBreach(sim, opponent) {
+    const open = this.openBreachIndices(sim, opponent);
+    if (this.profile.breachStrategy === BREACH_STRATEGY_RANDOM) return open[Math.floor(this.random() * open.length)];
+    if (this.profile.breachStrategy === BREACH_STRATEGY_FOCUS) {
+      if (this.focusBreachIndex === null || this.focusAgeS >= FOCUS_REEVALUATE_S || !open.includes(this.focusBreachIndex)) {
+        this.focusBreachIndex = this.weakestBreach(sim, opponent);
+        this.focusAgeS = 0;
+      }
+      return this.focusBreachIndex;
+    }
+    return this.weakestBreach(sim, opponent);
+  }
+
+  weakestBreach(sim, opponent) {
+    const breaches = sim.map.breachesBySide[opponent.side];
+    const guardRangePx = TILE_SIZE_PX * 4;
+    const scored = breaches.map((breach, index) => ({
+      index,
+      guards: opponent.towers.filter((tower) => !tower.type.isBulkhead && distanceBetween(tower.x, tower.y, tileCenterX(breach.col), tileCenterY(breach.row)) <= guardRangePx).length,
+    })).filter((entry) => sim.isBreachOpen(opponent.side, entry.index));
+    const fewest = Math.min(...scored.map((entry) => entry.guards));
+    const candidates = scored.filter((entry) => entry.guards === fewest);
+    return candidates[Math.floor(this.random() * candidates.length)].index;
+  }
+
+  planBuild(sim) {
+    const state = sim.sides[this.side];
+    if (this.buildTimerS < this.profile.buildIntervalS) return null;
+    const powerFraction = sim.powerUsed(state) / MATCH_RULES.reactorPowerCap;
+    const isPowerTight = powerFraction >= AI_RULES.upgradeFocusPowerFraction;
+    const upgradeCommand = this.planUpgrade(sim, state, isPowerTight);
+    if (upgradeCommand !== null) {
+      this.buildTimerS = 0;
+      return upgradeCommand;
+    }
+    const hasUpgradeLeft = state.towers.some((tower) => sim.canUpgradeTower(state, tower));
+    if (isPowerTight && hasUpgradeLeft) {
+      const bulkheadCommand = this.planBulkhead(sim, state);
+      if (bulkheadCommand !== null) this.buildTimerS = 0;
+      return bulkheadCommand;
+    }
+    if (state.towers.length >= AI_RULES.maxTowers) return null;
+    const bulkheadCommand = this.planBulkhead(sim, state);
+    if (bulkheadCommand !== null) {
+      this.buildTimerS = 0;
+      return bulkheadCommand;
+    }
+    const typeKey = this.chooseTowerType(sim, state);
+    if (typeKey === null) return null;
+    const tile = this.rankedDeckTiles.find((candidate) => sim.canBuildAt(this.side, candidate.col, candidate.row, typeKey));
+    if (!tile) return null;
+    this.buildTimerS = 0;
+    return { side: this.side, type: COMMAND_BUILD, col: tile.col, row: tile.row, typeKey };
+  }
+
+  planUpgrade(sim, state, isPowerTight) {
+    if (!isPowerTight && state.scrap < this.profile.upgradeReserve) return null;
+    const candidate = state.towers.filter((tower) => sim.canUpgradeTower(state, tower) && state.scrap >= tower.upgradeCost)
+      .sort((left, right) => left.upgradeCost - right.upgradeCost)[0];
+    if (!candidate) return null;
+    return { side: this.side, type: COMMAND_UPGRADE, col: candidate.col, row: candidate.row };
+  }
+
+  planBulkhead(sim, state) {
+    if (state.scrap < TOWER_TYPES.bulkhead.levels[0].cost) return null;
+    const sealable = [];
+    for (let row = 0; row < GRID_ROWS; row += 1) {
+      for (let col = 0; col < GRID_COLUMNS; col += 1) {
+        if (sideOfColumn(col) === this.side && sim.canBuildAt(this.side, col, row, 'bulkhead')) sealable.push({ col, row, isVent: DUCT_TILES.has(sim.map.tileAt(col, row)) });
+      }
+    }
+    const vents = sealable.filter((tile) => tile.isVent);
+    const hasSealedVent = state.towers.some((tower) => tower.type.isBulkhead && DUCT_TILES.has(sim.map.tileAt(tower.col, tower.row)));
+    if (vents.length > 0 && !hasSealedVent && state.towers.length >= AI_RULES.sealVentAfterTowers) {
+      const pick = vents[Math.floor(this.random() * vents.length)];
+      return { side: this.side, type: COMMAND_BUILD, col: pick.col, row: pick.row, typeKey: 'bulkhead' };
+    }
+    if (state.towers.length < AI_RULES.bulkheadAfterTowers) return null;
+    if (this.random() > this.profile.bulkheadChancePct) return null;
+    const corridors = sealable.filter((tile) => !tile.isVent);
+    if (corridors.length === 0) return null;
+    const pick = corridors[Math.floor(this.random() * corridors.length)];
+    return { side: this.side, type: COMMAND_BUILD, col: pick.col, row: pick.row, typeKey: 'bulkhead' };
+  }
+
+  chooseTowerType(sim, state) {
+    const opponent = sim.sides[sim.opponentOf(this.side)];
+    const platedSends = (opponent.sentHistory.carapace ?? 0) + (opponent.sentHistory.reclaimer ?? 0);
+    const phasedSends = opponent.sentHistory.wispforms ?? 0;
+    const affordable = WEAPON_TYPE_ORDER.filter((typeKey) => state.scrap >= TOWER_TYPES[typeKey].levels[0].cost);
+    if (affordable.length === 0) return null;
+    const counter = this.profile.counterStrength;
+    const weights = affordable.map((typeKey) => {
+      let weight = this.profile.buildWeights[typeKey] ?? 1;
+      if (platedSends > phasedSends && typeKey === 'arc') weight *= counter;
+      if (phasedSends > platedSends && (typeKey === 'sentry' || typeKey === 'mortar')) weight *= counter;
+      return { value: typeKey, weight };
+    });
+    return pickWeighted(this.random, weights);
+  }
+}
+
+
+// ===========================================================================
+// RENDERING (3/4 view, light from upper-left, heavy outlines, grime)
+// ===========================================================================
+
+function tracePolygon(context, points, scale) {
+  context.beginPath();
+  points.forEach(([x, y], index) => {
+    if (index === 0) context.moveTo(x * scale, y * scale);
+    else context.lineTo(x * scale, y * scale);
+  });
+  context.closePath();
+}
+
+function traceRegularPolygon(context, centerX, centerY, radius, sides, rotation) {
+  context.beginPath();
+  for (let index = 0; index < sides; index += 1) {
+    const angle = rotation + (Math.PI * 2 * index) / sides;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+    if (index === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  }
+  context.closePath();
+}
+
+function traceStar(context, centerX, centerY, outerRadius, innerRadius, points, rotation) {
+  context.beginPath();
+  for (let index = 0; index < points * 2; index += 1) {
+    const radius = index % 2 === 0 ? outerRadius : innerRadius;
+    const angle = rotation + (Math.PI * index) / points;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+    if (index === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  }
+  context.closePath();
+}
+
+function traceChamferedRect(context, centerX, centerY, halfWidth, halfHeight, chamfer) {
+  context.beginPath();
+  context.moveTo(centerX - halfWidth + chamfer, centerY - halfHeight);
+  context.lineTo(centerX + halfWidth - chamfer, centerY - halfHeight);
+  context.lineTo(centerX + halfWidth, centerY - halfHeight + chamfer);
+  context.lineTo(centerX + halfWidth, centerY + halfHeight - chamfer);
+  context.lineTo(centerX + halfWidth - chamfer, centerY + halfHeight);
+  context.lineTo(centerX - halfWidth + chamfer, centerY + halfHeight);
+  context.lineTo(centerX - halfWidth, centerY + halfHeight - chamfer);
+  context.lineTo(centerX - halfWidth, centerY - halfHeight + chamfer);
+  context.closePath();
+}
+
+// A starboard player sees the world mirrored; labels must stay readable.
+const VIEW = { isFlipped: false };
+
+function drawLabel(context, text, x, y) {
+  if (!VIEW.isFlipped) {
+    context.fillText(text, x, y);
+    return;
+  }
+  context.save();
+  context.translate(x, y);
+  context.scale(-1, 1);
+  context.fillText(text, 0, 0);
+  context.restore();
+}
+
+function fillAndOutline(context, fillColor) {
+  context.fillStyle = fillColor;
+  context.fill();
+  context.strokeStyle = PALETTE.outline;
+  context.lineWidth = DRAW_SIZES.outlineWidthPx;
+  context.lineJoin = 'round';
+  context.stroke();
+}
+
+function fillOnly(context, fillColor) {
+  context.fillStyle = fillColor;
+  context.fill();
+}
+
+// ---- terrain (themed per deck) -------------------------------------------------
+
+function drawDeckDecor(context, theme, x, y, random) {
+  const style = theme.decorStyle;
+  if (style === DECOR_GARDEN) {
+    context.strokeStyle = theme.detail;
+    context.lineWidth = 2;
+    context.beginPath();
+    for (let blade = -1; blade <= 1; blade += 1) {
+      context.moveTo(x + blade * 4, y + 6);
+      context.lineTo(x + blade * 6, y - 6 - random() * 4);
+    }
+    context.stroke();
+    return;
+  }
+  if (style === DECOR_CARGO) {
+    context.beginPath();
+    context.rect(x - 12, y - 9, 24, 18);
+    fillAndOutline(context, theme.machine);
+    context.fillStyle = PALETTE.highlight;
+    context.fillRect(x - 10, y - 7, 20, 3);
+    context.fillStyle = theme.detail;
+    context.fillRect(x - 4, y - 2, 8, 4);
+    return;
+  }
+  if (style === DECOR_CLINIC) {
+    context.fillStyle = theme.detail;
+    context.fillRect(x - 6, y - 2, 12, 4);
+    context.fillRect(x - 2, y - 6, 4, 12);
+    return;
+  }
+  if (style === DECOR_STARS) {
+    context.fillStyle = PALETTE.star;
+    context.fillRect(x - 1, y - 1, 2, 2);
+    context.fillRect(x + 7, y + 5, 1.5, 1.5);
+    return;
+  }
+  if (style === DECOR_FURNACE) {
+    context.fillStyle = PALETTE.ventSlat;
+    context.fillRect(x - 10, y - 8, 20, 16);
+    context.fillStyle = theme.detail;
+    for (let slat = 0; slat < 3; slat += 1) context.fillRect(x - 8, y - 6 + slat * 5, 16, 2);
+    return;
+  }
+  context.strokeStyle = theme.detail;
+  context.lineWidth = 1.5;
+  context.beginPath();
+  context.moveTo(x - 8, y);
+  context.lineTo(x + 8, y);
+  context.moveTo(x, y - 8);
+  context.lineTo(x, y + 8);
+  context.moveTo(x - 5, y - 5);
+  context.lineTo(x + 5, y + 5);
+  context.moveTo(x + 5, y - 5);
+  context.lineTo(x - 5, y + 5);
+  context.stroke();
+}
+
+function drawDeckTile(context, theme, col, row, random) {
+  const x = col * TILE_SIZE_PX;
+  const y = row * TILE_SIZE_PX;
+  const gradient = context.createLinearGradient(x, y, x + TILE_SIZE_PX, y + TILE_SIZE_PX);
+  gradient.addColorStop(0, random() < 0.5 ? theme.deckLight : theme.deckDark);
+  gradient.addColorStop(1, theme.deckDark);
+  context.fillStyle = gradient;
+  context.fillRect(x, y, TILE_SIZE_PX, TILE_SIZE_PX);
+  context.strokeStyle = PALETTE.deckPanelLine;
+  context.lineWidth = 1.5;
+  context.strokeRect(x + 0.5, y + 0.5, TILE_SIZE_PX - 1, TILE_SIZE_PX - 1);
+  context.fillStyle = PALETTE.highlight;
+  context.fillRect(x + 1, y + 1, TILE_SIZE_PX - 2, 2);
+  context.fillRect(x + 1, y + 1, 2, TILE_SIZE_PX - 2);
+  const detail = random();
+  if (detail < 0.2) {
+    context.strokeStyle = PALETTE.deckPanelLine;
+    context.beginPath();
+    context.moveTo(x + HALF_TILE_PX, y + 3);
+    context.lineTo(x + HALF_TILE_PX, y + TILE_SIZE_PX - 3);
+    context.stroke();
+  } else if (detail < 0.45) {
+    drawDeckDecor(context, theme, x + 10 + random() * (TILE_SIZE_PX - 20), y + 10 + random() * (TILE_SIZE_PX - 20), random);
+  }
+  context.fillStyle = PALETTE.deckRivet;
+  [[5, 5], [TILE_SIZE_PX - 7, 5], [5, TILE_SIZE_PX - 7], [TILE_SIZE_PX - 7, TILE_SIZE_PX - 7]].forEach(([offsetX, offsetY]) => {
+    context.fillRect(x + offsetX, y + offsetY, 2, 2);
+  });
+}
+
+function drawCorridorTile(context, theme, map, col, row) {
+  const x = col * TILE_SIZE_PX;
+  const y = row * TILE_SIZE_PX;
+  context.fillStyle = theme.corridorFloor;
+  context.fillRect(x, y, TILE_SIZE_PX, TILE_SIZE_PX);
+  context.strokeStyle = PALETTE.corridorGrate;
+  context.lineWidth = 1;
+  for (let line = 6; line < TILE_SIZE_PX; line += 6) {
+    context.beginPath();
+    context.moveTo(x, y + line + 0.5);
+    context.lineTo(x + TILE_SIZE_PX, y + line + 0.5);
+    context.stroke();
+  }
+  NEIGHBOR_OFFSETS.forEach((offset) => {
+    const neighbor = map.tileAt(col + offset.col, row + offset.row);
+    if (WALKABLE_TILES.has(neighbor)) return;
+    context.fillStyle = theme.edgeLightDim;
+    if (offset.col === 1) context.fillRect(x + TILE_SIZE_PX - 3, y, 3, TILE_SIZE_PX);
+    if (offset.col === -1) context.fillRect(x, y, 3, TILE_SIZE_PX);
+    if (offset.row === 1) context.fillRect(x, y + TILE_SIZE_PX - 3, TILE_SIZE_PX, 3);
+    if (offset.row === -1) context.fillRect(x, y, TILE_SIZE_PX, 3);
+    context.fillStyle = theme.edgeLight;
+    const half = DRAW_SIZES.corridorLightLengthPx / 2;
+    if (offset.col === 1) context.fillRect(x + TILE_SIZE_PX - 3, y + HALF_TILE_PX - half, 3, half * 2);
+    if (offset.col === -1) context.fillRect(x, y + HALF_TILE_PX - half, 3, half * 2);
+    if (offset.row === 1) context.fillRect(x + HALF_TILE_PX - half, y + TILE_SIZE_PX - 3, half * 2, 3);
+    if (offset.row === -1) context.fillRect(x + HALF_TILE_PX - half, y, half * 2, 3);
+  });
+}
+
+function drawVentTile(context, theme, col, row, digit) {
+  const x = col * TILE_SIZE_PX;
+  const y = row * TILE_SIZE_PX;
+  context.fillStyle = theme.corridorFloor;
+  context.fillRect(x, y, TILE_SIZE_PX, TILE_SIZE_PX);
+  context.beginPath();
+  context.rect(x + 3, y + 3, TILE_SIZE_PX - 6, TILE_SIZE_PX - 6);
+  fillAndOutline(context, PALETTE.ventFrame);
+  context.fillStyle = PALETTE.ventCover;
+  context.fillRect(x + 7, y + 7, TILE_SIZE_PX - 14, TILE_SIZE_PX - 14);
+  context.fillStyle = PALETTE.ventSlat;
+  for (let slat = 11; slat < TILE_SIZE_PX - 9; slat += DRAW_SIZES.ventSlatSpacingPx) context.fillRect(x + 11, y + slat, TILE_SIZE_PX - 22, 3);
+  context.fillStyle = theme.edgeLight;
+  context.fillRect(x + HALF_TILE_PX - 6, y + TILE_SIZE_PX - 9, 12, 3);
+}
+
+function drawWallTile(context, theme, map, col, row, random) {
+  const x = col * TILE_SIZE_PX;
+  const y = row * TILE_SIZE_PX;
+  const height = DRAW_SIZES.wallHeightPx;
+  context.fillStyle = theme.wallShade;
+  context.fillRect(x, y + height, TILE_SIZE_PX, TILE_SIZE_PX - height);
+  context.fillStyle = theme.wall;
+  context.fillRect(x, y, TILE_SIZE_PX, TILE_SIZE_PX - height);
+  context.fillStyle = theme.wallTop;
+  context.fillRect(x, y, TILE_SIZE_PX, 4);
+  context.strokeStyle = PALETTE.outline;
+  context.lineWidth = 1.5;
+  context.strokeRect(x + 0.5, y + 0.5, TILE_SIZE_PX - 1, TILE_SIZE_PX - 1);
+  const isHullRow = row === 0 || row === GRID_ROWS - 1;
+  if (theme.decorStyle === DECOR_STARS && isHullRow && random() < 0.7) {
+    context.beginPath();
+    context.rect(x + 8, y + 8, TILE_SIZE_PX - 16, TILE_SIZE_PX - height - 14);
+    fillAndOutline(context, '#05060d');
+    context.fillStyle = PALETTE.star;
+    for (let star = 0; star < 5; star += 1) {
+      const size = random() < 0.3 ? 2 : 1;
+      context.fillRect(x + 10 + random() * (TILE_SIZE_PX - 22), y + 10 + random() * (TILE_SIZE_PX - height - 18), size, size);
+    }
+    return;
+  }
+  const hasWallLeft = map.tileAt(col - 1, row) === TILE_WALL;
+  const hasWallRight = map.tileAt(col + 1, row) === TILE_WALL;
+  if (hasWallLeft || hasWallRight) {
+    context.fillStyle = PALETTE.pipeDark;
+    context.fillRect(x, y + 12, TILE_SIZE_PX, 7);
+    context.fillStyle = PALETTE.pipe;
+    context.fillRect(x, y + 12, TILE_SIZE_PX, 3);
+    context.fillStyle = PALETTE.outline;
+    context.fillRect(x + HALF_TILE_PX - 3, y + 10, 6, 11);
+    if (theme.decorStyle === DECOR_FURNACE) {
+      context.fillStyle = theme.detail;
+      context.fillRect(x + 6, y + 26, TILE_SIZE_PX - 12, 2);
+    }
+    return;
+  }
+  context.fillStyle = PALETTE.pipeDark;
+  context.fillRect(x + 20, y, 7, TILE_SIZE_PX - height);
+  context.fillStyle = PALETTE.pipe;
+  context.fillRect(x + 20, y, 3, TILE_SIZE_PX - height);
+}
+
+function drawMachineTile(context, theme, col, row, random) {
+  const x = col * TILE_SIZE_PX;
+  const y = row * TILE_SIZE_PX;
+  const height = DRAW_SIZES.machineHeightPx;
+  context.fillStyle = PALETTE.shadow;
+  context.fillRect(x + 7, y + 9, TILE_SIZE_PX - 6, TILE_SIZE_PX - 6);
+  context.beginPath();
+  context.rect(x + 4, y + height, TILE_SIZE_PX - 8, TILE_SIZE_PX - height - 4);
+  fillAndOutline(context, theme.machineShade);
+  context.beginPath();
+  context.rect(x + 4, y + 2, TILE_SIZE_PX - 8, TILE_SIZE_PX - height - 6);
+  fillAndOutline(context, theme.machine);
+  context.fillStyle = PALETTE.highlight;
+  context.fillRect(x + 6, y + 4, TILE_SIZE_PX - 12, 3);
+  if (theme.decorStyle === DECOR_GARDEN) {
+    context.fillStyle = theme.detail;
+    for (let leaf = 0; leaf < 4; leaf += 1) {
+      traceRegularPolygon(context, x + 10 + leaf * 9, y + 14 + (leaf % 2) * 6, 5, 3, random() * Math.PI);
+      context.fill();
+    }
+    return;
+  }
+  if (theme.decorStyle === DECOR_CLINIC) {
+    context.fillStyle = theme.detail;
+    context.fillRect(x + 20, y + 10, 8, 20);
+    context.fillRect(x + 14, y + 16, 20, 8);
+    return;
+  }
+  context.fillStyle = PALETTE.machineLight;
+  for (let index = 0; index < 3; index += 1) {
+    if (random() < 0.6) context.fillRect(x + 10 + index * 10, y + 12, 4, 3);
+  }
+  context.fillStyle = theme.edgeLight;
+  context.fillRect(x + 10, y + 20, TILE_SIZE_PX - 20, 2);
+  context.fillStyle = PALETTE.ventSlat;
+  for (let slat = 0; slat < 3; slat += 1) context.fillRect(x + 10, y + 25 + slat * 4, TILE_SIZE_PX - 20, 2);
+}
+
+function drawBreachTile(context, theme, col, row) {
+  const x = col * TILE_SIZE_PX;
+  const y = row * TILE_SIZE_PX;
+  context.fillStyle = PALETTE.breachHatch;
+  context.fillRect(x, y, TILE_SIZE_PX, TILE_SIZE_PX);
+  const stripeCount = 6;
+  for (let index = 0; index < stripeCount; index += 1) {
+    context.fillStyle = index % 2 === 0 ? PALETTE.breachStripe : PALETTE.breachStripeDark;
+    tracePolygon(context, [[x + index * 8, y], [x + index * 8 + 8, y], [x + index * 8 + 2, y + 6], [x + index * 8 - 6, y + 6]], 1);
+    context.fill();
+    tracePolygon(context, [[x + index * 8, y + TILE_SIZE_PX - 6], [x + index * 8 + 8, y + TILE_SIZE_PX - 6], [x + index * 8 + 2, y + TILE_SIZE_PX], [x + index * 8 - 6, y + TILE_SIZE_PX]], 1);
+    context.fill();
+  }
+  context.beginPath();
+  context.rect(x + 7, y + 10, TILE_SIZE_PX - 14, TILE_SIZE_PX - 20);
+  fillAndOutline(context, theme.corridorFloor);
+  context.strokeStyle = PALETTE.deckPanelLine;
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(x + HALF_TILE_PX, y + 10);
+  context.lineTo(x + HALF_TILE_PX, y + TILE_SIZE_PX - 10);
+  context.stroke();
+}
+
+function drawSealedHatchOverlay(context, col, row, remainingS, timeS) {
+  const x = col * TILE_SIZE_PX;
+  const y = row * TILE_SIZE_PX;
+  const blink = Math.sin(timeS * 4) > 0;
+  context.beginPath();
+  context.rect(x + 7, y + 10, TILE_SIZE_PX - 14, TILE_SIZE_PX - 20);
+  fillAndOutline(context, PALETTE.hatchSealed);
+  context.strokeStyle = PALETTE.hatchSealedLight;
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(x + 11, y + 14);
+  context.lineTo(x + TILE_SIZE_PX - 11, y + TILE_SIZE_PX - 14);
+  context.moveTo(x + TILE_SIZE_PX - 11, y + 14);
+  context.lineTo(x + 11, y + TILE_SIZE_PX - 14);
+  context.stroke();
+  if (blink) {
+    context.fillStyle = PALETTE.hatchSealedLight;
+    context.fillRect(x + HALF_TILE_PX - 2, y + HALF_TILE_PX - 2, 4, 4);
+  }
+  context.fillStyle = PALETTE.tooltipText;
+  context.font = `700 11px 'Chakra Petch', sans-serif`;
+  context.textAlign = 'center';
+  drawLabel(context, formatClock(remainingS), x + HALF_TILE_PX, y + TILE_SIZE_PX - 2);
+}
+
+function drawCoreHousing(context, theme, col, row) {
+  const x = col * TILE_SIZE_PX;
+  const y = row * TILE_SIZE_PX;
+  context.fillStyle = theme.corridorFloor;
+  context.fillRect(x, y, TILE_SIZE_PX, TILE_SIZE_PX);
+  traceRegularPolygon(context, x + HALF_TILE_PX, y + HALF_TILE_PX + 3, DRAW_SIZES.coreRadiusPx + 4, 8, Math.PI / 8);
+  fillOnly(context, PALETTE.towerBaseDark);
+  traceRegularPolygon(context, x + HALF_TILE_PX, y + HALF_TILE_PX, DRAW_SIZES.coreRadiusPx + 4, 8, Math.PI / 8);
+  fillAndOutline(context, PALETTE.coreHousing);
+}
+
+function drawLamp(context, theme, centerX, centerY) {
+  const gradient = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, DRAW_SIZES.lampRadiusPx);
+  gradient.addColorStop(0, theme.lamp);
+  gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  context.fillStyle = gradient;
+  context.fillRect(centerX - DRAW_SIZES.lampRadiusPx, centerY - DRAW_SIZES.lampRadiusPx, DRAW_SIZES.lampRadiusPx * 2, DRAW_SIZES.lampRadiusPx * 2);
+}
+
+function drawGrime(context, theme, map, random) {
+  for (let index = 0; index < DRAW_SIZES.grimePerMap; index += 1) {
+    context.fillStyle = theme.grime;
+    context.beginPath();
+    context.ellipse(random() * CANVAS_WIDTH_PX, random() * CANVAS_HEIGHT_PX, 10 + random() * 30, 6 + random() * 16, random() * Math.PI, 0, Math.PI * 2);
+    context.fill();
+  }
+  map.breachesBySide.flat().forEach((breach) => {
+    for (let index = 0; index < DRAW_SIZES.splatterPerBreach; index += 1) {
+      const angle = random() * Math.PI * 2;
+      const distance = TILE_SIZE_PX * 0.4 + random() * TILE_SIZE_PX * 1.4;
+      traceRegularPolygon(context, tileCenterX(breach.col) + Math.cos(angle) * distance, tileCenterY(breach.row) + Math.sin(angle) * distance, 3 + random() * 6, 5 + Math.floor(random() * 3), random() * Math.PI);
+      fillOnly(context, theme.splatter);
+    }
+  });
+}
+
+function renderBackground(map, theme) {
+  const random = createSeededRandom(4242);
+  const canvas = document.createElement('canvas');
+  canvas.width = CANVAS_WIDTH_PX;
+  canvas.height = CANVAS_HEIGHT_PX;
+  const context = canvas.getContext('2d');
+  for (let row = 0; row < GRID_ROWS; row += 1) {
+    for (let col = 0; col < GRID_COLUMNS; col += 1) {
+      const tile = map.tileAt(col, row);
+      if (tile === TILE_CORRIDOR) drawCorridorTile(context, theme, map, col, row);
+      else if (DUCT_TILES.has(tile)) drawVentTile(context, theme, col, row, tile);
+      else if (BREACH_TILES.has(tile)) drawBreachTile(context, theme, col, row);
+      else if (tile === TILE_CORE) drawCoreHousing(context, theme, col, row);
+      else drawDeckTile(context, theme, col, row, random);
+    }
+  }
+  drawGrime(context, theme, map, random);
+  for (let row = 0; row < GRID_ROWS; row += 1) {
+    for (let col = 0; col < GRID_COLUMNS; col += 1) {
+      if (map.tileAt(col, row) !== TILE_CORRIDOR) continue;
+      const openNeighbors = NEIGHBOR_OFFSETS.filter((offset) => WALKABLE_TILES.has(map.tileAt(col + offset.col, row + offset.row))).length;
+      if (openNeighbors >= 3) drawLamp(context, theme, tileCenterX(col), tileCenterY(row));
+    }
+  }
+  context.fillStyle = PALETTE.seam;
+  context.fillRect(HALF_COLUMNS * TILE_SIZE_PX - DRAW_SIZES.seamWidthPx / 2, 0, DRAW_SIZES.seamWidthPx, CANVAS_HEIGHT_PX);
+  for (let row = 0; row < GRID_ROWS; row += 1) {
+    for (let col = 0; col < GRID_COLUMNS; col += 1) {
+      const tile = map.tileAt(col, row);
+      if (tile === TILE_WALL) drawWallTile(context, theme, map, col, row, random);
+      if (tile === TILE_MACHINE) drawMachineTile(context, theme, col, row, random);
+    }
+  }
+  return canvas;
+}
+
+function drawOpenDucts(context, sim, timeS) {
+  const pulse = 0.5 + 0.5 * Math.sin(timeS * 3);
+  sim.map.ductPartnerByKey.forEach((partner, key) => {
+    const col = key % GRID_COLUMNS;
+    const row = Math.floor(key / GRID_COLUMNS);
+    const state = sim.sides[sideOfColumn(col)];
+    if (state.sealedKeys.has(key) || state.sealedKeys.has(tileKey(partner.col, partner.row))) return;
+    context.globalAlpha = 0.4 + 0.6 * pulse;
+    context.fillStyle = PALETTE.ductGlow;
+    context.fillRect(col * TILE_SIZE_PX + 6, row * TILE_SIZE_PX + 6, TILE_SIZE_PX - 12, TILE_SIZE_PX - 12);
+    context.globalAlpha = 1;
+  });
+  sim.map.ductPartnerByKey.forEach((partner, key) => {
+    const col = key % GRID_COLUMNS;
+    const row = Math.floor(key / GRID_COLUMNS);
+    context.fillStyle = PALETTE.menuText;
+    context.font = `700 11px 'Chakra Petch', sans-serif`;
+    context.textAlign = 'center';
+    drawLabel(context, `D${sim.map.tileAt(col, row)}`, tileCenterX(col), row * TILE_SIZE_PX + TILE_SIZE_PX - 12);
+  });
+}
+
+function drawCore(context, core, coreHp, timeS) {
+  const centerX = tileCenterX(core.col);
+  const centerY = tileCenterY(core.row);
+  const healthFraction = coreHp / MATCH_RULES.coreHp;
+  const pulse = 0.8 + 0.2 * Math.sin(timeS * 3);
+  const ringColor = healthFraction > 0.35 ? PALETTE.coreRing : PALETTE.coreDanger;
+  const glow = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, DRAW_SIZES.coreRadiusPx * 2.2 * pulse);
+  glow.addColorStop(0, healthFraction > 0.35 ? PALETTE.coreGlow : 'rgba(226, 81, 63, 0.4)');
+  glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  context.fillStyle = glow;
+  context.fillRect(centerX - DRAW_SIZES.coreRadiusPx * 3, centerY - DRAW_SIZES.coreRadiusPx * 3, DRAW_SIZES.coreRadiusPx * 6, DRAW_SIZES.coreRadiusPx * 6);
+  traceRegularPolygon(context, centerX, centerY, DRAW_SIZES.coreRadiusPx, 6, timeS * 0.4);
+  fillAndOutline(context, PALETTE.towerPlate);
+  context.strokeStyle = ringColor;
+  context.lineWidth = 3;
+  traceRegularPolygon(context, centerX, centerY, DRAW_SIZES.coreRadiusPx * 0.7 * pulse, 6, -timeS * 0.6);
+  context.stroke();
+  traceStar(context, centerX, centerY, DRAW_SIZES.coreRadiusPx * 0.38, DRAW_SIZES.coreRadiusPx * 0.18, 4, timeS);
+  fillOnly(context, ringColor);
+}
+
+// ---- towers ------------------------------------------------------------------
+
+function drawTowerBase(context, tower, timeS) {
+  const half = DRAW_SIZES.towerBaseHalfPx + (tower.level - 1) * 1.5;
+  const height = DRAW_SIZES.towerHeightPx + (tower.level - 1) * 2;
+  context.fillStyle = PALETTE.shadow;
+  traceChamferedRect(context, tower.x + 5, tower.y + height + 4, half, half, 5);
+  context.fill();
+  traceChamferedRect(context, tower.x, tower.y + height, half, half, 5);
+  fillAndOutline(context, PALETTE.towerBaseDark);
+  context.fillStyle = PALETTE.ventSlat;
+  for (let slat = 0; slat < 2; slat += 1) context.fillRect(tower.x - half + 6, tower.y + half + slat * 3 + 1, half * 2 - 12, 1.5);
+  traceChamferedRect(context, tower.x, tower.y, half, half, 5);
+  fillAndOutline(context, PALETTE.towerBase);
+  context.fillStyle = PALETTE.towerBaseLight;
+  context.fillRect(tower.x - half + 3, tower.y - half + 3, half * 2 - 6, 3);
+  context.fillRect(tower.x - half + 3, tower.y - half + 3, 3, half * 2 - 6);
+  context.strokeStyle = PALETTE.deckPanelLine;
+  context.lineWidth = 1;
+  context.strokeRect(tower.x - half * 0.62, tower.y - half * 0.62, half * 1.24, half * 1.24);
+  const blink = Math.sin(timeS * 3 + tower.id) > 0.6;
+  context.fillStyle = blink ? tower.type.accent : PALETTE.towerBaseDark;
+  context.fillRect(tower.x + half - 8, tower.y - half + 4, 4, 4);
+  if (tower.level >= 2) {
+    context.fillStyle = PALETTE.corridorEdgeLight;
+    context.fillRect(tower.x - half + 2, tower.y + half - 5, half * 2 - 4, 2);
+  }
+  if (tower.level >= 3) {
+    context.fillStyle = PALETTE.arcBolt;
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([signX, signY]) => {
+      context.fillRect(tower.x + signX * (half - 5) - 2, tower.y + signY * (half - 5) - 2, 4, 4);
+    });
+  }
+  traceRegularPolygon(context, tower.x, tower.y + 2, DRAW_SIZES.towerTurretRadiusPx * 0.95, 8, Math.PI / 8);
+  fillOnly(context, PALETTE.towerBaseDark);
+}
+
+function drawSentryTurret(context, tower) {
+  const radius = DRAW_SIZES.towerTurretRadiusPx;
+  tracePolygon(context, [[-0.75, -0.75], [0.5, -0.85], [1.0, 0], [0.5, 0.85], [-0.75, 0.75], [-1.0, 0]], radius);
+  fillAndOutline(context, PALETTE.towerPlate);
+  context.fillStyle = PALETTE.highlight;
+  tracePolygon(context, [[-0.6, -0.55], [0.4, -0.65], [0.3, -0.3], [-0.5, -0.25]], radius);
+  context.fill();
+  [-0.36, 0.06].forEach((offsetY) => {
+    context.beginPath();
+    context.rect(0.3 * radius, offsetY * radius, radius * 1.55, radius * 0.3);
+    fillAndOutline(context, tower.type.color);
+  });
+  context.fillStyle = PALETTE.towerBaseDark;
+  context.fillRect(1.1 * radius, -0.42 * radius, 4, radius * 0.84);
+  context.beginPath();
+  context.rect(-0.5 * radius, -0.3 * radius, radius * 0.6, radius * 0.6);
+  fillAndOutline(context, tower.type.accent);
+  if (tower.flashS > 0) {
+    traceStar(context, 2.0 * radius, 0, radius * 0.7, radius * 0.3, 4, 0);
+    fillOnly(context, PALETTE.muzzleFlash);
+  }
+}
+
+function drawArcTurret(context, tower, timeS) {
+  const radius = DRAW_SIZES.towerTurretRadiusPx;
+  tracePolygon(context, [[-0.7, 0.85], [-0.4, -0.95], [0.4, -0.95], [0.7, 0.85]], radius);
+  fillAndOutline(context, PALETTE.towerPlate);
+  for (let ring = 0; ring < 3; ring += 1) {
+    context.strokeStyle = tower.type.color;
+    context.lineWidth = 2.5;
+    context.beginPath();
+    context.moveTo(-0.5 * radius, (ring * 0.45 - 0.55) * radius);
+    context.lineTo(0.5 * radius, (ring * 0.45 - 0.55) * radius);
+    context.stroke();
+  }
+  const sparkCount = tower.level + 1;
+  context.rotate(-tower.aimAngle);
+  for (let index = 0; index < sparkCount; index += 1) {
+    const angle = timeS * DRAW_SIZES.orbitRateHz * Math.PI * 2 + (Math.PI * 2 * index) / sparkCount;
+    traceStar(context, Math.cos(angle) * DRAW_SIZES.orbitRadiusPx, Math.sin(angle) * DRAW_SIZES.orbitRadiusPx, 4, 1.5, 4, angle);
+    fillOnly(context, tower.type.accent);
+  }
+  context.rotate(tower.aimAngle);
+  tracePolygon(context, [[1.0, 0], [0.3, -0.4], [0.3, 0.4]], radius);
+  fillAndOutline(context, tower.type.color);
+  if (tower.flashS > 0) {
+    context.strokeStyle = tower.type.accent;
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(1.0 * radius, 0);
+    context.lineTo(1.5 * radius, -0.3 * radius);
+    context.lineTo(1.9 * radius, 0.2 * radius);
+    context.lineTo(2.4 * radius, 0);
+    context.stroke();
+  }
+}
+
+function drawMortarTurret(context, tower) {
+  const radius = DRAW_SIZES.towerTurretRadiusPx;
+  traceRegularPolygon(context, 0, 0, radius * 0.9, 6, 0);
+  fillAndOutline(context, PALETTE.towerPlate);
+  context.fillStyle = PALETTE.highlight;
+  tracePolygon(context, [[-0.7, -0.4], [-0.1, -0.75], [0.3, -0.5], [-0.3, -0.15]], radius);
+  context.fill();
+  tracePolygon(context, [[-0.3, -0.55], [1.45, -0.42], [1.45, 0.42], [-0.3, 0.55]], radius);
+  fillAndOutline(context, tower.type.color);
+  context.fillStyle = tower.type.accent;
+  context.fillRect(radius * 0.5, -radius * 0.46, 3, radius * 0.92);
+  context.fillRect(radius * 1.15, -radius * 0.44, 3, radius * 0.88);
+  context.beginPath();
+  context.rect(-radius * 0.5, -radius * 0.22, radius * 0.35, radius * 0.44);
+  fillAndOutline(context, PALETTE.shell);
+  if (tower.flashS > 0) {
+    traceStar(context, 1.9 * radius, 0, radius * 0.9, radius * 0.35, 5, 0);
+    fillOnly(context, PALETTE.muzzleFlash);
+  }
+}
+
+function drawCryoTurret(context, tower, timeS) {
+  const radius = DRAW_SIZES.towerTurretRadiusPx;
+  const pulse = 0.85 + 0.15 * Math.sin(timeS * Math.PI * 2);
+  context.fillStyle = PALETTE.slowTint;
+  traceRegularPolygon(context, 0, 0, radius * 1.4 * pulse, 6, timeS * 0.5);
+  context.fill();
+  traceRegularPolygon(context, 0, 0, radius * 0.8, 6, Math.PI / 6);
+  fillAndOutline(context, PALETTE.towerPlate);
+  [0, Math.PI * 0.72, -Math.PI * 0.72].forEach((angle, index) => {
+    context.save();
+    context.rotate(angle);
+    const length = index === 0 ? radius * 1.3 : radius * 0.85;
+    tracePolygon(context, [[length, 0], [length * 0.3, -0.38 * radius], [-0.25 * radius, 0], [length * 0.3, 0.38 * radius]], 1);
+    fillAndOutline(context, tower.type.color);
+    tracePolygon(context, [[length * 0.9, 0], [length * 0.3, -0.14 * radius], [length * 0.3, 0.14 * radius]], 1);
+    fillOnly(context, tower.type.accent);
+    context.restore();
+  });
+  context.fillStyle = PALETTE.arcCore;
+  context.fillRect(-2, -2, 4, 4);
+}
+
+function drawFlamerTurret(context, tower) {
+  const radius = DRAW_SIZES.towerTurretRadiusPx;
+  traceRegularPolygon(context, -0.2 * radius, 0, radius * 0.85, 8, Math.PI / 8);
+  fillAndOutline(context, PALETTE.towerPlate);
+  context.beginPath();
+  context.rect(0.2 * radius, -0.32 * radius, radius * 1.35, radius * 0.64);
+  fillAndOutline(context, tower.type.color);
+  context.beginPath();
+  context.rect(-0.7 * radius, -0.6 * radius, radius * 0.55, radius * 1.2);
+  fillAndOutline(context, PALETTE.shell);
+  context.fillStyle = tower.type.accent;
+  context.fillRect(1.25 * radius, -0.2 * radius, radius * 0.3, radius * 0.4);
+  context.fillStyle = PALETTE.highlight;
+  context.fillRect(0.3 * radius, -0.28 * radius, radius * 1.1, 2);
+  if (tower.flashS > 0) {
+    tracePolygon(context, [[1.55, -0.35], [2.3, -0.15], [2.7, 0], [2.3, 0.15], [1.55, 0.35]], radius);
+    fillOnly(context, PALETTE.flame);
+    tracePolygon(context, [[1.6, -0.15], [2.2, 0], [1.6, 0.15]], radius);
+    fillOnly(context, PALETTE.flameCore);
+  }
+}
+
+function drawTurret(context, typeKey, tower, timeS) {
+  if (typeKey === 'sentry') drawSentryTurret(context, tower);
+  else if (typeKey === 'arc') drawArcTurret(context, tower, timeS);
+  else if (typeKey === 'mortar') drawMortarTurret(context, tower);
+  else if (typeKey === 'cryo') drawCryoTurret(context, tower, timeS);
+  else if (typeKey === 'flamer') drawFlamerTurret(context, tower);
+}
+
+function drawBulkhead(context, tower) {
+  const x = tower.col * TILE_SIZE_PX;
+  const y = tower.row * TILE_SIZE_PX;
+  const height = DRAW_SIZES.wallHeightPx;
+  context.fillStyle = PALETTE.shadow;
+  context.fillRect(x + 5, y + 7, TILE_SIZE_PX, TILE_SIZE_PX);
+  context.beginPath();
+  context.rect(x + 3, y + height, TILE_SIZE_PX - 6, TILE_SIZE_PX - height - 3);
+  fillAndOutline(context, PALETTE.wallShade);
+  context.beginPath();
+  context.rect(x + 3, y + 3, TILE_SIZE_PX - 6, TILE_SIZE_PX - height - 6);
+  fillAndOutline(context, tower.type.color);
+  context.fillStyle = PALETTE.highlight;
+  context.fillRect(x + 5, y + 5, TILE_SIZE_PX - 10, 3);
+  for (let index = 0; index < 4; index += 1) {
+    context.fillStyle = index % 2 === 0 ? PALETTE.breachStripe : PALETTE.breachStripeDark;
+    context.fillRect(x + 8 + index * 8, y + 13, 8, 6);
+  }
+  context.strokeStyle = PALETTE.deckPanelLine;
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(x + HALF_TILE_PX, y + 4);
+  context.lineTo(x + HALF_TILE_PX, y + TILE_SIZE_PX - height - 4);
+  context.stroke();
+  const integrityFraction = tower.integrityS / MATCH_RULES.bulkheadLifetimeS;
+  context.fillStyle = PALETTE.hpBarBack;
+  context.fillRect(x + 8, y + TILE_SIZE_PX - height - 10, TILE_SIZE_PX - 16, 4);
+  context.fillStyle = PALETTE.integrityBar;
+  context.fillRect(x + 8, y + TILE_SIZE_PX - height - 10, (TILE_SIZE_PX - 16) * integrityFraction, 4);
+}
+
+function drawDisabledOverlay(context, tower, timeS) {
+  const half = DRAW_SIZES.towerBaseHalfPx + 2;
+  context.fillStyle = PALETTE.disabledTint;
+  traceChamferedRect(context, tower.x, tower.y, half, half, 5);
+  context.fill();
+  context.strokeStyle = PALETTE.empArc;
+  context.lineWidth = 2;
+  for (let arc = 0; arc < 3; arc += 1) {
+    const angle = timeS * 15 + arc * 2.1;
+    context.beginPath();
+    context.moveTo(tower.x + Math.cos(angle) * half * 0.6, tower.y + Math.sin(angle) * half * 0.6);
+    context.lineTo(tower.x + Math.cos(angle + 0.4) * half * 0.9, tower.y + Math.sin(angle + 0.4) * half * 0.9 - 4);
+    context.lineTo(tower.x + Math.cos(angle + 0.9) * half * 0.7, tower.y + Math.sin(angle + 0.9) * half * 0.7);
+    context.stroke();
+  }
+}
+
+function drawTower(context, tower, timeS) {
+  if (tower.type.isBulkhead) {
+    drawBulkhead(context, tower);
+    return;
+  }
+  drawTowerBase(context, tower, timeS);
+  context.save();
+  context.translate(tower.x, tower.y - 2);
+  context.rotate(tower.aimAngle);
+  drawTurret(context, tower.typeKey, tower, timeS);
+  context.restore();
+  context.fillStyle = PALETTE.corridorEdgeLight;
+  for (let pip = 0; pip < tower.level; pip += 1) {
+    context.fillRect(tower.x - (tower.level - 1) * 4 + pip * 8 - 2, tower.y + DRAW_SIZES.towerBaseHalfPx + 3, DRAW_SIZES.towerLevelPipPx, DRAW_SIZES.towerLevelPipPx);
+  }
+  if (tower.isDisabled) drawDisabledOverlay(context, tower, timeS);
+}
+
+
+// ---- creeps (context translated to the creep, rotated so +x is forward;
+// shape coordinates are in radius units; heads sit forward and oversized) ---
+
+function drawCreepEyes(context, radius, forwardScale, spread, size) {
+  const eyeX = radius * forwardScale;
+  context.fillStyle = PALETTE.eyeGlow;
+  context.fillRect(eyeX - size, -radius * spread - size, size * 2, size * 2);
+  context.fillRect(eyeX - size, radius * spread - size, size * 2, size * 2);
+  context.fillStyle = PALETTE.eye;
+  context.fillRect(eyeX - size * 0.4, -radius * spread - size * 0.4, size * 0.8, size * 0.8);
+  context.fillRect(eyeX - size * 0.4, radius * spread - size * 0.4, size * 0.8, size * 0.8);
+}
+
+function drawCreepHead(context, radius, points, color, eyeForward, eyeSpread) {
+  tracePolygon(context, points, radius);
+  fillAndOutline(context, color);
+  context.fillStyle = PALETTE.highlight;
+  tracePolygon(context, points.slice(0, 3).map(([x, y]) => [x * 0.75, y * 0.55]), radius);
+  context.fill();
+  drawCreepEyes(context, radius, eyeForward, eyeSpread, DRAW_SIZES.eyeSizePx);
+}
+
+function drawShapeShambler(context, type, radius, timeS) {
+  const sway = Math.sin(timeS * 5) * 0.15;
+  tracePolygon(context, [[-0.3, 0.5], [-1.2, 1.0 + sway], [-1.45, 0.8 + sway], [-0.55, 0.15]], radius);
+  fillAndOutline(context, type.trimColor);
+  tracePolygon(context, [[0.35, -0.55], [1.2, -1.0 - sway], [1.4, -0.7 - sway], [0.65, -0.2]], radius);
+  fillAndOutline(context, PALETTE.flesh);
+  context.fillStyle = PALETTE.bone;
+  context.fillRect(1.0 * radius, (-0.95 - sway) * radius, 0.3 * radius, 0.12 * radius);
+  tracePolygon(context, [[0.45, -0.75], [0.85, -0.25], [0.85, 0.45], [0.25, 0.9], [-0.6, 0.85], [-1.0, 0.25], [-0.85, -0.6], [-0.2, -0.95]], radius);
+  fillAndOutline(context, type.bodyColor);
+  context.fillStyle = PALETTE.fleshDark;
+  tracePolygon(context, [[-0.5, -0.3], [0.1, -0.55], [0.35, -0.05], [-0.25, 0.15]], radius);
+  context.fill();
+  context.fillStyle = PALETTE.bone;
+  context.fillRect(-0.4 * radius, 0.25 * radius, 0.55 * radius, 0.1 * radius);
+  context.fillRect(-0.3 * radius, 0.45 * radius, 0.4 * radius, 0.1 * radius);
+  drawCreepHead(context, radius, [[1.35, -0.45], [1.6, 0.05], [1.3, 0.55], [0.55, 0.5], [0.4, -0.35]], type.bodyColor, 1.25, 0.24);
+  context.fillStyle = PALETTE.bone;
+  tracePolygon(context, [[1.05, 0.55], [1.55, 0.35], [1.5, 0.75], [1.0, 0.85]], radius);
+  context.fill();
+}
+
+function drawShapeLurcher(context, type, radius, timeS) {
+  const stride = Math.sin(timeS * 12) * 0.3;
+  [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([signX, signY]) => {
+    const swing = stride * signX * signY;
+    tracePolygon(context, [[0.3 * signX, 0.3 * signY], [(1.2 + swing) * signX, 1.35 * signY], [(1.6 + swing) * signX, 1.05 * signY], [0.55 * signX, 0.1 * signY]], radius);
+    fillAndOutline(context, PALETTE.fleshDark);
+    context.fillStyle = PALETTE.bone;
+    tracePolygon(context, [[(1.45 + swing) * signX, 1.2 * signY], [(1.9 + swing) * signX, 1.35 * signY], [(1.6 + swing) * signX, 1.05 * signY]], radius);
+    context.fill();
+  });
+  tracePolygon(context, [[0.9, 0], [0.55, -0.55], [-0.2, -0.7], [-0.9, -0.4], [-1.35, 0], [-0.9, 0.4], [-0.2, 0.7], [0.55, 0.55]], radius);
+  fillAndOutline(context, type.bodyColor);
+  context.fillStyle = PALETTE.bone;
+  for (let index = -1; index <= 1; index += 1) context.fillRect((index * 0.45 - 0.2) * radius, -0.18 * radius, 0.28 * radius, 0.36 * radius);
+  drawCreepHead(context, radius, [[1.5, -0.35], [1.7, 0.1], [1.4, 0.5], [0.7, 0.45], [0.6, -0.3]], type.trimColor, 1.35, 0.22);
+  context.fillStyle = type.accentColor;
+  tracePolygon(context, [[1.7, 0.1], [1.95, 0.15], [1.65, 0.35]], radius);
+  context.fill();
+}
+
+function drawShapeCarapace(context, type, radius) {
+  tracePolygon(context, [[1.0, 0], [0.75, -0.75], [0, -1.0], [-0.85, -0.85], [-1.15, 0], [-0.85, 0.85], [0, 1.0], [0.75, 0.75]], radius);
+  fillAndOutline(context, PALETTE.fleshDark);
+  [[-0.65, -0.7, 0.15, -0.9, 0.4, -0.35, -0.55, -0.3], [-0.65, 0.7, 0.15, 0.9, 0.4, 0.35, -0.55, 0.3], [0.3, -0.55, 0.9, -0.25, 0.9, 0.25, 0.3, 0.55]].forEach(([ax, ay, bx, by, cx, cy, dx, dy]) => {
+    tracePolygon(context, [[ax, ay], [bx, by], [cx, cy], [dx, dy]], radius);
+    fillAndOutline(context, type.bodyColor);
+    context.fillStyle = PALETTE.highlight;
+    tracePolygon(context, [[ax, ay], [bx, by], [(ax + bx) / 2 + 0.1, (ay + by) / 2 * 0.7]], radius);
+    context.fill();
+  });
+  context.fillStyle = PALETTE.bone;
+  context.fillRect(-0.9 * radius, -0.12 * radius, 1.3 * radius, 0.1 * radius);
+  context.fillStyle = type.accentColor;
+  context.fillRect(-0.35 * radius, -0.35 * radius, 0.18 * radius, 0.18 * radius);
+  context.fillRect(-0.35 * radius, 0.17 * radius, 0.18 * radius, 0.18 * radius);
+  drawCreepHead(context, radius, [[1.45, -0.4], [1.65, 0], [1.45, 0.4], [0.75, 0.45], [0.75, -0.45]], type.trimColor, 1.35, 0.2);
+  tracePolygon(context, [[1.05, -0.45], [1.6, -0.85], [1.35, -0.25]], radius);
+  fillAndOutline(context, PALETTE.bone);
+  tracePolygon(context, [[1.05, 0.45], [1.6, 0.85], [1.35, 0.25]], radius);
+  fillAndOutline(context, PALETTE.bone);
+}
+
+function drawShapeWispform(context, type, radius, timeS) {
+  const flicker = 0.8 + 0.2 * Math.sin(timeS * 9);
+  context.fillStyle = PALETTE.biomassGlow;
+  traceRegularPolygon(context, 0, 0, radius * 1.7 * flicker, 7, timeS * 2);
+  context.fill();
+  context.globalAlpha = 0.85;
+  tracePolygon(context, [[1.0, 0], [0.5, -0.75], [-0.3, -1.0], [-0.7, -0.5], [-1.5, -0.75], [-1.05, -0.15], [-1.6, 0.3], [-0.95, 0.35], [-1.4, 1.0], [-0.5, 0.8], [0.3, 0.95]], radius);
+  fillAndOutline(context, type.bodyColor);
+  context.globalAlpha = 1;
+  drawCreepHead(context, radius, [[1.3, -0.45], [1.55, 0], [1.3, 0.45], [0.5, 0.45], [0.5, -0.45]], type.bodyColor, 1.15, 0.24);
+  traceStar(context, radius * 0.1, 0, radius * 0.4 * flicker, radius * 0.15, 4, timeS * 3);
+  fillOnly(context, type.accentColor);
+}
+
+function drawShapeBloater(context, type, radius, timeS) {
+  const swell = 1 + 0.06 * Math.sin(timeS * 4);
+  tracePolygon(context, [[0.7, 0.25], [0.6, -0.65], [0, -1.05], [-0.75, -0.9], [-1.1, -0.2], [-1.0, 0.55], [-0.4, 1.05], [0.4, 0.95]], radius * swell);
+  fillAndOutline(context, type.bodyColor);
+  context.fillStyle = PALETTE.highlight;
+  tracePolygon(context, [[-0.7, -0.75], [-0.1, -0.9], [0.1, -0.5], [-0.55, -0.35]], radius * swell);
+  context.fill();
+  [[-0.3, -0.5], [0.2, 0.45], [-0.65, 0.3], [0.35, -0.25]].forEach(([x, y]) => {
+    traceRegularPolygon(context, x * radius, y * radius, radius * 0.2 * swell, 5, timeS);
+    fillAndOutline(context, type.accentColor);
+  });
+  context.fillStyle = PALETTE.fleshDark;
+  tracePolygon(context, [[-0.2, 0.2], [0.1, 0.05], [0.25, 0.35], [-0.05, 0.5]], radius);
+  context.fill();
+  drawCreepHead(context, radius, [[1.3, -0.4], [1.5, 0], [1.3, 0.4], [0.6, 0.45], [0.55, -0.45]], PALETTE.flesh, 1.2, 0.2);
+  context.fillStyle = PALETTE.bone;
+  context.fillRect(0.95 * radius, 0.25 * radius, 0.5 * radius, 0.1 * radius);
+}
+
+function drawShapeReclaimer(context, type, radius, timeS) {
+  const clamp = 0.15 + 0.1 * Math.sin(timeS * 3);
+  [[1, 1], [1, -1]].forEach(([signX, signY]) => {
+    tracePolygon(context, [[0.5, 0.6 * signY], [1.3, 0.9 * signY], [1.75, (0.6 + clamp) * signY], [1.6, (0.15 + clamp) * signY], [1.2, 0.4 * signY]], radius);
+    fillAndOutline(context, type.trimColor);
+    context.fillStyle = type.accentColor;
+    context.fillRect(1.25 * radius, (0.55 + clamp * 0.5) * signY * radius - 2, 0.2 * radius, 4);
+  });
+  tracePolygon(context, [[0.95, -0.75], [0.95, 0.75], [0.4, 1.0], [-0.95, 0.9], [-1.05, -0.9], [0.4, -1.0]], radius);
+  fillAndOutline(context, type.bodyColor);
+  context.fillStyle = PALETTE.highlight;
+  context.fillRect(-0.9 * radius, -0.85 * radius, 1.7 * radius, 0.12 * radius);
+  context.beginPath();
+  context.rect(-1.4 * radius, -0.6 * radius, 0.45 * radius, 1.2 * radius);
+  fillAndOutline(context, type.trimColor);
+  context.beginPath();
+  context.rect(-0.6 * radius, -0.55 * radius, 0.95 * radius, 0.55 * radius);
+  fillAndOutline(context, PALETTE.towerPlate);
+  traceRegularPolygon(context, -0.15 * radius, -0.28 * radius, radius * 0.2, 6, 0);
+  fillOnly(context, PALETTE.bone);
+  context.fillStyle = PALETTE.eyeGlow;
+  context.fillRect(-0.3 * radius, -0.34 * radius, 0.1 * radius, 0.1 * radius);
+  context.fillRect(-0.05 * radius, -0.34 * radius, 0.1 * radius, 0.1 * radius);
+  context.fillStyle = type.accentColor;
+  for (let index = 0; index < 3; index += 1) context.fillRect((-0.6 + index * 0.3) * radius, 0.15 * radius, 0.15 * radius, 0.35 * radius);
+  context.strokeStyle = PALETTE.eyeGlow;
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(-0.9 * radius, 0.6 * radius);
+  context.lineTo(0.3 * radius, 0.85 * radius);
+  context.stroke();
+  drawCreepEyes(context, radius, 0.7, 0.3, DRAW_SIZES.eyeSizePx * 1.2);
+}
+
+const SHAPE_DRAWERS = Object.freeze({
+  shambler: drawShapeShambler,
+  lurcher: drawShapeLurcher,
+  carapace: drawShapeCarapace,
+  wispform: drawShapeWispform,
+  bloater: drawShapeBloater,
+  reclaimer: drawShapeReclaimer,
+});
+
+function drawCreep(context, creep, timeS, isHidden) {
+  const type = creep.type;
+  const radius = creep.radiusPx;
+  const isAirborne = type.shape === 'wispform';
+  const bob = Math.sin(timeS * DRAW_SIZES.creepBobRateHz * Math.PI * 2 + creep.id) * DRAW_SIZES.creepBobAmplitudePx * (isAirborne ? 3 : 1);
+  context.globalAlpha = isHidden ? 0.3 : 1;
+  context.fillStyle = PALETTE.shadow;
+  context.beginPath();
+  context.ellipse(creep.x + 4, creep.y + radius * 0.8, radius * 1.0, radius * 0.42, 0, 0, Math.PI * 2);
+  context.fill();
+  context.save();
+  context.translate(creep.x, creep.y + bob);
+  context.rotate(creep.angle);
+  SHAPE_DRAWERS[type.shape](context, type, radius, timeS);
+  if (creep.slowPct > 0) {
+    context.fillStyle = PALETTE.slowTint;
+    traceRegularPolygon(context, 0, 0, radius * 1.2, 6, 0);
+    context.fill();
+  }
+  if (creep.burnRemainingS > 0) {
+    context.fillStyle = PALETTE.burnTint;
+    traceStar(context, 0, 0, radius * 1.3, radius * 0.7, 5, timeS * 8);
+    context.fill();
+  }
+  context.restore();
+  const barWidth = DRAW_SIZES.hpBarWidthPx * (radius > 15 ? 1.8 : 1);
+  const barX = creep.x - barWidth / 2;
+  const barY = creep.y - radius - DRAW_SIZES.hpBarOffsetPx - DRAW_SIZES.hpBarHeightPx;
+  context.fillStyle = PALETTE.hpBarBack;
+  context.fillRect(barX - 1, barY - 1, barWidth + 2, DRAW_SIZES.hpBarHeightPx + 2);
+  context.fillStyle = creep.burnRemainingS > 0 ? PALETTE.hpBarBurn : (creep.slowPct > 0 ? PALETTE.hpBarSlow : PALETTE.hpBarFront);
+  context.fillRect(barX, barY, barWidth * Math.max(0, creep.hp / creep.maxHp), DRAW_SIZES.hpBarHeightPx);
+  context.globalAlpha = 1;
+}
+
+// ---- projectiles, pods, effects ----------------------------------------------
+
+function drawProjectile(context, projectile) {
+  context.save();
+  context.translate(projectile.x, projectile.y);
+  context.rotate(projectile.angle);
+  if (projectile.kind === PROJECTILE_ROUND) {
+    context.strokeStyle = PALETTE.round;
+    context.lineWidth = 3;
+    context.beginPath();
+    context.moveTo(-DRAW_SIZES.roundLengthPx, 0);
+    context.lineTo(0, 0);
+    context.stroke();
+    context.fillStyle = PALETTE.arcCore;
+    context.fillRect(-2, -1.5, 3, 3);
+  } else if (projectile.kind === PROJECTILE_ARC) {
+    tracePolygon(context, [[7, 0], [0, -4], [-12, -2], [-16, 0], [-12, 2], [0, 4]], 1);
+    fillAndOutline(context, PALETTE.arcBolt);
+    traceStar(context, 0, 0, 4, 1.5, 4, 0);
+    fillOnly(context, PALETTE.arcCore);
+  } else if (projectile.kind === PROJECTILE_SHELL) {
+    traceRegularPolygon(context, 0, 0, DRAW_SIZES.shellRadiusPx, 8, 0);
+    fillAndOutline(context, PALETTE.shell);
+    context.fillStyle = PALETTE.shellShine;
+    context.fillRect(-3, -3, 2, 2);
+  } else if (projectile.kind === PROJECTILE_SHARD) {
+    const radius = DRAW_SIZES.shardRadiusPx;
+    tracePolygon(context, [[radius * 1.4, 0], [0, -radius * 0.6], [-radius, 0], [0, radius * 0.6]], 1);
+    fillAndOutline(context, PALETTE.shard);
+  } else {
+    const radius = DRAW_SIZES.flameRadiusPx;
+    tracePolygon(context, [[radius, 0], [0.2 * radius, -radius], [-radius, -0.3 * radius], [-radius, 0.3 * radius], [0.2 * radius, radius]], 1);
+    fillOnly(context, PALETTE.flame);
+    tracePolygon(context, [[radius * 0.5, 0], [0, -radius * 0.4], [-radius * 0.5, 0], [0, radius * 0.4]], 1);
+    fillOnly(context, PALETTE.flameCore);
+  }
+  context.restore();
+}
+
+function drawPod(context, pod, timeS) {
+  const targetX = pod.x;
+  const targetY = pod.y;
+  const progress = 1 - pod.remainingS / MATCH_RULES.podFlightS;
+  const eased = progress * progress;
+  const pulse = 0.7 + 0.3 * Math.sin(timeS * 10);
+  context.strokeStyle = PALETTE.podMarker;
+  context.lineWidth = 2;
+  context.setLineDash([5, 4]);
+  traceRegularPolygon(context, targetX, targetY, DRAW_SIZES.breachMarkerRadiusPx * (1.6 - eased * 0.6) * pulse, 4, timeS * 2);
+  context.stroke();
+  context.setLineDash([]);
+  context.fillStyle = PALETTE.shadow;
+  context.beginPath();
+  context.ellipse(targetX + 4, targetY + 6, DRAW_SIZES.podShadowMaxRadiusPx * eased, DRAW_SIZES.podShadowMaxRadiusPx * eased * 0.5, 0, 0, Math.PI * 2);
+  context.fill();
+  const podY = targetY - DRAW_SIZES.podDropHeightPx * (1 - eased);
+  const size = DRAW_SIZES.podSizePx;
+  tracePolygon(context, [[targetX - size * 0.4, podY - size], [targetX + size * 0.4, podY - size], [targetX, podY - size * (1.8 + pulse)]], 1);
+  fillOnly(context, PALETTE.podFlame);
+  tracePolygon(context, [[targetX - size * 0.6, podY - size], [targetX + size * 0.6, podY - size], [targetX + size * 0.8, podY + size * 0.2], [targetX, podY + size], [targetX - size * 0.8, podY + size * 0.2]], 1);
+  fillAndOutline(context, pod.card.kind === CARD_KIND_CREEPS ? PALETTE.pod : PALETTE.towerPlate);
+  context.fillStyle = PALETTE.highlight;
+  context.fillRect(targetX - size * 0.5, podY - size * 0.9, size * 0.4, size * 0.5);
+  context.fillStyle = PALETTE.podFin;
+  context.fillRect(targetX - size * 0.9, podY - size * 0.9, size * 0.3, size * 0.8);
+  context.fillRect(targetX + size * 0.6, podY - size * 0.9, size * 0.3, size * 0.8);
+  context.fillStyle = pod.card.kind === CARD_KIND_EMP ? PALETTE.empArc : (pod.card.kind === CARD_KIND_BREACHER ? PALETTE.flame : PALETTE.eyeGlow);
+  context.fillRect(targetX - size * 0.25, podY - size * 0.3, size * 0.5, size * 0.3);
+}
+
+function drawEffect(context, effect) {
+  const lifeFraction = effect.ttlS / effect.maxTtlS;
+  context.globalAlpha = lifeFraction;
+  if (effect.kind === 'ring') {
+    context.strokeStyle = effect.color;
+    context.lineWidth = 3;
+    traceRegularPolygon(context, effect.x, effect.y, effect.radiusPx * (1.2 - lifeFraction), 10, lifeFraction);
+    context.stroke();
+  } else if (effect.kind === 'burst') {
+    traceStar(context, effect.x, effect.y, effect.radiusPx * (1.4 - lifeFraction), effect.radiusPx * 0.4, 6, lifeFraction * 3);
+    fillOnly(context, effect.color);
+  } else if (effect.kind === 'puff') {
+    context.fillStyle = effect.color;
+    traceRegularPolygon(context, effect.x, effect.y, effect.radiusPx * (1.6 - lifeFraction), 7, lifeFraction * 2);
+    context.fill();
+    context.fillStyle = PALETTE.splatterDark;
+    traceRegularPolygon(context, effect.x + 4, effect.y + 4, effect.radiusPx * 0.6, 5, lifeFraction);
+    context.fill();
+  } else if (effect.kind === 'spark') {
+    context.fillStyle = effect.color;
+    context.fillRect(effect.x - DRAW_SIZES.sparkSizePx / 2, effect.y - DRAW_SIZES.sparkSizePx / 2, DRAW_SIZES.sparkSizePx, DRAW_SIZES.sparkSizePx);
+  } else {
+    context.fillStyle = PALETTE.outline;
+    context.font = `700 ${DRAW_SIZES.floatingTextFontPx}px 'Chakra Petch', sans-serif`;
+    context.textAlign = 'center';
+    drawLabel(context, effect.text, effect.x + 1, effect.y + 1);
+    context.fillStyle = effect.color;
+    drawLabel(context, effect.text, effect.x, effect.y);
+  }
+  context.globalAlpha = 1;
+}
+
+// ---- overlays, menus, tooltips -------------------------------------------------
+
+function drawRangeRing(context, centerX, centerY, rangePx) {
+  context.strokeStyle = PALETTE.rangeRing;
+  context.lineWidth = 2;
+  context.setLineDash([6, 4]);
+  context.beginPath();
+  context.arc(centerX, centerY, rangePx, 0, Math.PI * 2);
+  context.stroke();
+  context.setLineDash([]);
+}
+
+function drawSightLines(context, sim, tower, creeps) {
+  context.lineWidth = DRAW_SIZES.losLineWidthPx;
+  creeps.forEach((creep) => {
+    if (!creep.hasEnteredStation || distanceBetween(tower.x, tower.y, creep.x, creep.y) > tower.rangePx) return;
+    const isVisible = sim.hasLineOfSight(tower.x, tower.y, creep.x, creep.y) && !creep.isHidden(sim.map);
+    context.strokeStyle = isVisible ? PALETTE.losVisible : PALETTE.losBlocked;
+    context.setLineDash(isVisible ? [] : [4, 4]);
+    context.beginPath();
+    context.moveTo(tower.x, tower.y);
+    context.lineTo(creep.x, creep.y);
+    context.stroke();
+  });
+  context.setLineDash([]);
+}
+
+function drawTileHighlight(context, col, row, isValid) {
+  context.fillStyle = isValid ? PALETTE.hoverValid : PALETTE.hoverInvalid;
+  context.fillRect(col * TILE_SIZE_PX, row * TILE_SIZE_PX, TILE_SIZE_PX, TILE_SIZE_PX);
+}
+
+function drawCursorFrame(context, col, row, color) {
+  context.strokeStyle = PALETTE.cursorFrameShadow;
+  context.lineWidth = DRAW_SIZES.cursorLineWidthPx + 2;
+  context.strokeRect(col * TILE_SIZE_PX + 2, row * TILE_SIZE_PX + 2, TILE_SIZE_PX - 4, TILE_SIZE_PX - 4);
+  context.strokeStyle = color;
+  context.lineWidth = DRAW_SIZES.cursorLineWidthPx;
+  context.strokeRect(col * TILE_SIZE_PX + 2, row * TILE_SIZE_PX + 2, TILE_SIZE_PX - 4, TILE_SIZE_PX - 4);
+}
+
+function drawBreachMarkers(context, sim, targetSide, hoverBreachIndex, timeS) {
+  const pulse = 0.85 + 0.15 * Math.sin(timeS * 6);
+  sim.map.breachesBySide[targetSide].forEach((breach, index) => {
+    if (!sim.isBreachOpen(targetSide, index)) return;
+    const centerX = tileCenterX(breach.col);
+    const centerY = tileCenterY(breach.row);
+    const isHovered = index === hoverBreachIndex;
+    context.strokeStyle = isHovered ? PALETTE.breachMarkerHover : PALETTE.breachMarker;
+    context.lineWidth = isHovered ? 4 : 3;
+    traceRegularPolygon(context, centerX, centerY, DRAW_SIZES.breachMarkerRadiusPx * pulse * (isHovered ? 1.25 : 1), 4, Math.PI / 4);
+    context.stroke();
+    context.beginPath();
+    context.moveTo(centerX - DRAW_SIZES.breachMarkerRadiusPx * 1.5, centerY);
+    context.lineTo(centerX + DRAW_SIZES.breachMarkerRadiusPx * 1.5, centerY);
+    context.moveTo(centerX, centerY - DRAW_SIZES.breachMarkerRadiusPx * 1.5);
+    context.lineTo(centerX, centerY + DRAW_SIZES.breachMarkerRadiusPx * 1.5);
+    context.stroke();
+  });
+}
+
+function drawSabotageMarker(context, card, col, row, timeS) {
+  const centerX = tileCenterX(col);
+  const centerY = tileCenterY(row);
+  const pulse = 0.85 + 0.15 * Math.sin(timeS * 6);
+  const color = card.kind === CARD_KIND_EMP ? PALETTE.sabotageMarker : PALETTE.cutterMarker;
+  context.strokeStyle = color;
+  context.lineWidth = 3;
+  traceRegularPolygon(context, centerX, centerY, DRAW_SIZES.breachMarkerRadiusPx * pulse, 4, Math.PI / 4);
+  context.stroke();
+  context.beginPath();
+  context.moveTo(centerX - DRAW_SIZES.breachMarkerRadiusPx * 1.5, centerY);
+  context.lineTo(centerX + DRAW_SIZES.breachMarkerRadiusPx * 1.5, centerY);
+  context.moveTo(centerX, centerY - DRAW_SIZES.breachMarkerRadiusPx * 1.5);
+  context.lineTo(centerX, centerY + DRAW_SIZES.breachMarkerRadiusPx * 1.5);
+  context.stroke();
+  if (card.kind === CARD_KIND_EMP) {
+    context.setLineDash([6, 4]);
+    context.beginPath();
+    context.arc(centerX, centerY, MATCH_RULES.empRadiusPx, 0, Math.PI * 2);
+    context.stroke();
+    context.setLineDash([]);
+  }
+}
+
+function drawSealedHatches(context, sim, timeS) {
+  sim.map.breachesBySide.forEach((breaches, side) => {
+    breaches.forEach((breach, index) => {
+      if (sim.isBreachOpen(side, index)) return;
+      drawSealedHatchOverlay(context, breach.col, breach.row, breach.openAtS - sim.clockS, timeS);
+    });
+  });
+}
+
+function drawMenuButton(context, option, isHighlighted) {
+  const edgeColor = !option.isEnabled ? PALETTE.menuEdgeDisabled : (option.action === MENU_ACTION_SELL ? PALETTE.menuSell : PALETTE.menuEdge);
+  context.fillStyle = PALETTE.menuFill;
+  traceChamferedRect(context, option.x, option.y, option.halfWidthPx, option.halfHeightPx, MENU_LAYOUT.chamferPx);
+  context.fill();
+  context.strokeStyle = isHighlighted && option.isEnabled ? PALETTE.menuHighlight : edgeColor;
+  context.lineWidth = isHighlighted ? 3 : 2;
+  context.stroke();
+}
+
+function drawBuildMenu(context, menu, options, highlightedOption) {
+  if (highlightedOption !== null) {
+    drawRangeRing(context, tileCenterX(menu.col), tileCenterY(menu.row), TOWER_TYPES[highlightedOption.typeKey].levels[0].rangeTiles * TILE_SIZE_PX);
+  }
+  drawCursorFrame(context, menu.col, menu.row, PALETTE.playerColor);
+  options.forEach((option) => {
+    drawMenuButton(context, option, option === highlightedOption);
+    context.save();
+    context.translate(option.x, option.y - 4);
+    context.scale(MENU_LAYOUT.iconScale, MENU_LAYOUT.iconScale);
+    context.rotate(-Math.PI / 2);
+    if (!option.isEnabled) context.globalAlpha = 0.4;
+    drawTurret(context, option.typeKey, { typeKey: option.typeKey, type: TOWER_TYPES[option.typeKey], level: 1, flashS: 0, aimAngle: -Math.PI / 2 }, 0);
+    context.restore();
+    context.fillStyle = option.isEnabled ? PALETTE.menuText : PALETTE.menuTextDisabled;
+    context.font = `700 ${MENU_LAYOUT.labelFontPx}px 'Chakra Petch', sans-serif`;
+    context.textAlign = 'center';
+    context.textBaseline = 'alphabetic';
+    drawLabel(context, option.label, option.x, option.y + option.halfHeightPx - 4);
+  });
+}
+
+function drawPillMenu(context, options, highlightedOption) {
+  options.forEach((option) => {
+    drawMenuButton(context, option, option === highlightedOption);
+    context.fillStyle = option.isEnabled ? PALETTE.menuText : PALETTE.menuTextDisabled;
+    context.font = `700 ${MENU_LAYOUT.labelFontPx}px 'Chakra Petch', sans-serif`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    drawLabel(context, option.label, option.x, option.y + 1);
+  });
+  context.textBaseline = 'alphabetic';
+}
+
+function describeTowerLevel(type, level) {
+  const stats = type.levels[level - 1];
+  const lines = [];
+  if (type.isBulkhead) {
+    lines.push(`Seals a corridor or vent for ${MATCH_RULES.bulkheadLifetimeS} s.`, 'Blocks movement and line of sight.', `Max ${MATCH_RULES.bulkheadCap}, no power draw.`);
+    return lines;
+  }
+  const dps = stats.damage * stats.attacksPerS;
+  lines.push(`${stats.damage} ${type.damageType} damage, ${stats.attacksPerS.toFixed(1)}/s (${Math.round(dps)} dps)`);
+  lines.push(`Range ${stats.rangeTiles.toFixed(1)} tiles, power ${MATCH_RULES.towerPowerByLevel[level - 1]}`);
+  if (type.splashRadiusPx > 0) lines.push(`Splash ${(type.splashRadiusPx / TILE_SIZE_PX).toFixed(1)} tiles`);
+  if (stats.slowPct > 0) lines.push(`Slows ${Math.round(stats.slowPct * 100)}% for ${type.slowDurationS} s`);
+  if (stats.burnPerS > 0) lines.push(`Burns ${stats.burnPerS}/s for ${type.burnDurationS} s, halts regen`);
+  return lines;
+}
+
+function drawTooltip(context, anchorX, anchorY, title, subtitle, lines) {
+  const width = DRAW_SIZES.tooltipWidthPx;
+  const padding = DRAW_SIZES.tooltipPaddingPx;
+  const lineHeight = DRAW_SIZES.tooltipLineHeightPx;
+  const height = padding * 2 + lineHeight * (lines.length + 2);
+  const left = Math.min(Math.max(anchorX, DRAW_SIZES.tooltipPaddingPx), CANVAS_WIDTH_PX - width - DRAW_SIZES.tooltipPaddingPx);
+  const top = Math.min(Math.max(anchorY, DRAW_SIZES.tooltipPaddingPx), CANVAS_HEIGHT_PX - height - DRAW_SIZES.tooltipPaddingPx);
+  traceChamferedRect(context, left + width / 2, top + height / 2, width / 2, height / 2, 6);
+  context.fillStyle = PALETTE.tooltipFill;
+  context.fill();
+  context.strokeStyle = PALETTE.tooltipEdge;
+  context.lineWidth = 2;
+  context.stroke();
+  context.textAlign = 'left';
+  context.textBaseline = 'alphabetic';
+  context.fillStyle = PALETTE.tooltipTitle;
+  context.font = `700 ${DRAW_SIZES.tooltipTitleFontPx}px 'Chakra Petch', sans-serif`;
+  drawLabel(context, title, left + padding, top + padding + 12);
+  context.fillStyle = PALETTE.tooltipDim;
+  context.font = `600 ${DRAW_SIZES.tooltipFontPx}px 'Rajdhani', sans-serif`;
+  drawLabel(context, subtitle, left + padding, top + padding + 12 + lineHeight);
+  context.fillStyle = PALETTE.tooltipText;
+  lines.forEach((line, index) => {
+    drawLabel(context, line, left + padding, top + padding + 12 + lineHeight * (index + 2));
+  });
+}
+
+
+// ===========================================================================
+// NETWORK CLIENT (WebSocket to the authoritative server)
+// ===========================================================================
+
+class NetClient {
+  constructor(url, handlers) {
+    this.handlers = handlers;
+    this.socket = new WebSocket(url);
+    this.socket.addEventListener('open', () => handlers.onOpen());
+    this.socket.addEventListener('close', () => handlers.onClose());
+    this.socket.addEventListener('error', () => handlers.onError());
+    this.socket.addEventListener('message', (event) => {
+      const message = JSON.parse(event.data);
+      handlers.onMessage(message);
+    });
+  }
+
+  get isOpen() {
+    return this.socket.readyState === WebSocket.OPEN;
+  }
+
+  send(message) {
+    if (!this.isOpen) throw new Error('Socket is not open');
+    this.socket.send(JSON.stringify(message));
+  }
+
+  close() {
+    this.socket.close();
+  }
+}
+
+// ===========================================================================
+// CLIENT: menus, HUD, input, main loop
+// ===========================================================================
+
+function elementById(id) {
+  const element = document.getElementById(id);
+  if (element === null) throw new Error(`Missing element #${id}`);
+  return element;
+}
+
+function formatClock(seconds) {
+  const whole = Math.floor(seconds);
+  const minutes = Math.floor(whole / 60);
+  const remainder = whole % 60;
+  return `${minutes}:${remainder < 10 ? '0' : ''}${remainder}`;
+}
+
+function loadCampaign() {
+  try {
+    const raw = window.localStorage.getItem(CAMPAIGN_STORAGE_KEY);
+    if (raw === null) return { beaten: [] };
+    const parsed = JSON.parse(raw);
+    return { beaten: Array.isArray(parsed.beaten) ? parsed.beaten.filter((key) => COMMANDERS.some((commander) => commander.key === key)) : [] };
+  } catch (error) {
+    return { beaten: [] };
+  }
+}
+
+function saveCampaign(campaign) {
+  try {
+    window.localStorage.setItem(CAMPAIGN_STORAGE_KEY, JSON.stringify(campaign));
+  } catch (error) {
+    // Storage can be unavailable; the ladder simply resets next visit.
+  }
+}
+
+function commanderByKey(key) {
+  const commander = COMMANDERS.find((candidate) => candidate.key === key);
+  if (!commander) throw new Error(`Unknown commander ${key}`);
+  return commander;
+}
+
+const MENU_TABS = Object.freeze(['campaign', 'skirmish', 'online', 'briefing']);
+const MODE_OFFLINE = 'offline';
+const MODE_ONLINE = 'online';
+const ONLINE_URL_STORAGE_KEY = 'deadlight.serverUrl';
+const ONLINE_NAME_STORAGE_KEY = 'deadlight.callsign';
+
+class RadialMenus {
+  constructor(sim, side) {
+    this.sim = sim;
+    this.side = side;
+    this.menu = null;
+    this.selectedTower = null;
+  }
+
+  openBuild(col, row) {
+    this.selectedTower = null;
+    this.menu = { kind: MENU_KIND_BUILD, col, row };
+  }
+
+  openTower(tower) {
+    this.selectedTower = tower;
+    this.menu = { kind: MENU_KIND_TOWER, col: tower.col, row: tower.row };
+  }
+
+  close() {
+    this.menu = null;
+    this.selectedTower = null;
+  }
+
+  anchor() {
+    const reachX = MENU_LAYOUT.pillSideOffsetPx + MENU_LAYOUT.pillHalfWidthPx + MENU_LAYOUT.edgeMarginPx;
+    const reachY = MENU_LAYOUT.ringRadiusPx + MENU_LAYOUT.buildButtonHalfPx + MENU_LAYOUT.edgeMarginPx;
+    return {
+      x: Math.min(Math.max(tileCenterX(this.menu.col), reachX), CANVAS_WIDTH_PX - reachX),
+      y: Math.min(Math.max(tileCenterY(this.menu.row), reachY), CANVAS_HEIGHT_PX - reachY),
+    };
+  }
+
+  options() {
+    const menu = this.menu;
+    if (menu === null) return [];
+    const state = this.sim.sides[this.side];
+    const anchor = this.anchor();
+    const pill = { halfWidthPx: MENU_LAYOUT.pillHalfWidthPx, halfHeightPx: MENU_LAYOUT.pillHalfHeightPx };
+    if (menu.kind === MENU_KIND_BUILD) {
+      if (this.sim.isSealableTile(menu.col, menu.row)) {
+        const cost = TOWER_TYPES.bulkhead.levels[0].cost;
+        return [{
+          action: MENU_ACTION_BUILD, typeKey: 'bulkhead', label: `Bulkhead ${cost} scrap`,
+          isEnabled: state.scrap >= cost && this.sim.canBuildAt(this.side, menu.col, menu.row, 'bulkhead'),
+          x: anchor.x, y: anchor.y - MENU_LAYOUT.pillOffsetPx, ...pill,
+        }];
+      }
+      return WEAPON_TYPE_ORDER.map((typeKey, index) => {
+        const cost = TOWER_TYPES[typeKey].levels[0].cost;
+        return {
+          action: MENU_ACTION_BUILD, typeKey, label: `${cost}`,
+          isEnabled: state.scrap >= cost && this.sim.canBuildAt(this.side, menu.col, menu.row, typeKey),
+          x: anchor.x + Math.cos(BUILD_MENU_ANGLES[index]) * MENU_LAYOUT.ringRadiusPx,
+          y: anchor.y + Math.sin(BUILD_MENU_ANGLES[index]) * MENU_LAYOUT.ringRadiusPx,
+          halfWidthPx: MENU_LAYOUT.buildButtonHalfPx, halfHeightPx: MENU_LAYOUT.buildButtonHalfPx,
+        };
+      });
+    }
+    const tower = this.sim.towerAt(menu.col, menu.row);
+    if (tower === null || tower.side !== this.side) return [];
+    const sellOption = { action: MENU_ACTION_SELL, label: `Sell +${tower.sellValue} scrap`, isEnabled: true, x: anchor.x, y: anchor.y + MENU_LAYOUT.pillOffsetPx, ...pill };
+    if (tower.type.isBulkhead) return [sellOption];
+    return [
+      { action: MENU_ACTION_UPGRADE, label: tower.canUpgrade ? `Upgrade ${tower.upgradeCost} scrap` : 'Max level', isEnabled: this.sim.canUpgradeTower(state, tower) && state.scrap >= tower.upgradeCost, x: anchor.x, y: anchor.y - MENU_LAYOUT.pillOffsetPx, ...pill },
+      { action: MENU_ACTION_TARGET, label: `Target: ${tower.targetMode}`, isEnabled: true, x: anchor.x + MENU_LAYOUT.pillSideOffsetPx, y: anchor.y, ...pill },
+      sellOption,
+    ];
+  }
+
+  optionAt(x, y) {
+    return this.options().find((option) => Math.abs(x - option.x) <= option.halfWidthPx && Math.abs(y - option.y) <= option.halfHeightPx) ?? null;
+  }
+
+  // Returns the command an option produces, or null. The caller applies it.
+  commandFor(option) {
+    if (option === null || !option.isEnabled) return null;
+    const { col, row } = this.menu;
+    if (option.action === MENU_ACTION_BUILD) return { side: this.side, type: COMMAND_BUILD, col, row, typeKey: option.typeKey };
+    if (option.action === MENU_ACTION_UPGRADE) return { side: this.side, type: COMMAND_UPGRADE, col, row };
+    if (option.action === MENU_ACTION_TARGET) return { side: this.side, type: COMMAND_TARGET, col, row };
+    return { side: this.side, type: COMMAND_SELL, col, row };
+  }
+
+  draw(context, hoverPoint) {
+    if (this.menu === null) return;
+    const options = this.options();
+    if (options.length === 0) return;
+    const highlighted = hoverPoint === null ? null : this.optionAt(hoverPoint.x, hoverPoint.y);
+    if (this.menu.kind === MENU_KIND_BUILD && !this.sim.isSealableTile(this.menu.col, this.menu.row)) drawBuildMenu(context, this.menu, options, highlighted);
+    else {
+      drawCursorFrame(context, this.menu.col, this.menu.row, PALETTE.playerColor);
+      drawPillMenu(context, options, highlighted);
+    }
+    if (highlighted !== null) this.drawOptionTooltip(context, highlighted);
+  }
+
+  drawOptionTooltip(context, option) {
+    const anchor = this.anchor();
+    const tooltipX = anchor.x + MENU_LAYOUT.ringRadiusPx + MENU_LAYOUT.buildButtonHalfPx + 12;
+    const tooltipY = anchor.y - MENU_LAYOUT.ringRadiusPx;
+    if (option.action === MENU_ACTION_BUILD) {
+      const type = TOWER_TYPES[option.typeKey];
+      drawTooltip(context, tooltipX, tooltipY, `${type.name}, ${type.levels[0].cost} scrap`, type.role, describeTowerLevel(type, 1));
+      return;
+    }
+    if (option.action !== MENU_ACTION_UPGRADE) return;
+    const tower = this.sim.towerAt(this.menu.col, this.menu.row);
+    if (tower === null || !tower.canUpgrade) return;
+    const nextLevel = tower.level + 1;
+    drawTooltip(context, tooltipX, tooltipY, `${tower.type.name} level ${nextLevel}`, `Upgrade cost ${tower.upgradeCost} scrap, +${tower.upgradePowerIncrease} power`, describeTowerLevel(tower.type, nextLevel));
+  }
+}
+
+function describeCard(card) {
+  if (card.kind !== CARD_KIND_CREEPS) return card.role;
+  const type = CREEP_TYPES[card.creepTypeKey];
+  const resist = [];
+  if (type.kineticResistPct > 0) resist.push(`${Math.round(type.kineticResistPct * 100)}% kinetic resist`);
+  if (type.energyResistPct > 0) resist.push(`${Math.round(type.energyResistPct * 100)}% energy resist`);
+  if (type.isSlowImmune) resist.push('immune to cryo');
+  if (type.regenHpPerS > 0) resist.push('regenerates');
+  return `${card.role} ${card.count} x ${type.name}: ${type.hp} hp, speed ${type.speedPxPerS}, ${type.coreDamage} core damage${resist.length > 0 ? `, ${resist.join(', ')}` : ''}.`;
+}
+
+class Interface {
+  constructor() {
+    this.coreYou = elementById('hud-core-you');
+    this.coreRival = elementById('hud-core-rival');
+    this.scrap = elementById('hud-scrap');
+    this.biomass = elementById('hud-biomass');
+    this.power = elementById('hud-power');
+    this.codex = elementById('codex');
+    this.clock = elementById('hud-clock');
+    this.fastForwardButton = elementById('fast-forward-button');
+    this.pauseButton = elementById('pause-button');
+    this.menuOverlay = elementById('menu-overlay');
+    this.pauseOverlay = elementById('pause-overlay');
+    this.endOverlay = elementById('end-overlay');
+    this.endTitle = elementById('end-title');
+    this.endSummary = elementById('end-summary');
+    this.nextCommanderButton = elementById('next-commander-button');
+    this.rivalLabel = elementById('hud-rival-label');
+    this.sendCards = elementById('send-cards');
+    this.sendHint = elementById('send-hint');
+    this.commanderList = elementById('commander-list');
+    this.skirmishCommanders = elementById('skirmish-commanders');
+    this.skirmishDecks = elementById('skirmish-decks');
+    this.difficultyButtons = [...document.querySelectorAll('[data-difficulty]')];
+    this.tabButtons = [...document.querySelectorAll('.tab-button')];
+    this.onlineName = elementById('online-name');
+    this.onlineUrl = elementById('online-url');
+    this.onlineCode = elementById('online-code');
+    this.onlineStatus = elementById('online-status');
+    this.onlineDecks = elementById('online-decks');
+    this.onlineQuickButton = elementById('online-quick-button');
+    this.onlineCreateButton = elementById('online-create-button');
+    this.onlineJoinButton = elementById('online-join-button');
+    this.cardButtons = new Map();
+    this.buildSendCards();
+    this.buildCodex();
+    this.tabButtons.forEach((button) => button.addEventListener('click', () => this.showTab(button.dataset.tab)));
+  }
+
+  buildCodex() {
+    const entries = [];
+    WEAPON_TYPE_ORDER.concat(['bulkhead']).forEach((typeKey) => {
+      const type = TOWER_TYPES[typeKey];
+      entries.push(`<li><strong>${type.name}</strong> (${type.levels[0].cost} scrap): ${type.role} ${describeTowerLevel(type, 1).join('. ')}.</li>`);
+    });
+    SEND_CARDS.forEach((card) => {
+      entries.push(`<li><strong>${card.name}</strong> (${card.biomassCost} bio, ${card.cooldownS} s): ${describeCard(card)}</li>`);
+    });
+    this.codex.innerHTML = entries.join('');
+  }
+
+  showTab(tabKey) {
+    if (!MENU_TABS.includes(tabKey)) throw new Error(`Unknown tab ${tabKey}`);
+    this.tabButtons.forEach((button) => button.classList.toggle('is-active', button.dataset.tab === tabKey));
+    MENU_TABS.forEach((key) => elementById(`tab-${key}`).classList.toggle('is-hidden', key !== tabKey));
+  }
+
+  renderCampaign(campaign, onFight) {
+    this.commanderList.replaceChildren(...COMMANDERS.map((commander, index) => {
+      const isBeaten = campaign.beaten.includes(commander.key);
+      const isUnlocked = index <= campaign.beaten.length;
+      const card = document.createElement('div');
+      card.className = `commander-card${isBeaten ? ' is-beaten' : ''}${isUnlocked ? '' : ' is-locked'}`;
+      const rank = document.createElement('div');
+      rank.className = 'commander-rank';
+      rank.textContent = String(index + 1);
+      const text = document.createElement('div');
+      text.className = 'commander-text';
+      const name = document.createElement('div');
+      name.className = 'commander-name';
+      name.innerHTML = `${commander.name} <span>${commander.title}</span>`;
+      const meta = document.createElement('div');
+      meta.className = 'commander-meta';
+      meta.textContent = isUnlocked ? `${DECKS[commander.deckKey].name}. ${commander.blurb}${isBeaten ? ' Breached.' : ''}` : 'Locked. Breach the previous commander first.';
+      text.append(name, meta);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'game-button is-small';
+      button.textContent = isBeaten ? 'Replay' : 'Fight';
+      button.disabled = !isUnlocked;
+      button.addEventListener('click', () => onFight(commander.key));
+      card.append(rank, text, button);
+      return card;
+    }));
+  }
+
+  renderOnlineDecks(selection) {
+    this.onlineDecks.replaceChildren(...DECK_ORDER.map((deckKey) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `game-button is-secondary is-small${selection.deckKey === deckKey ? ' is-active' : ''}`;
+      button.textContent = DECKS[deckKey].name;
+      button.style.borderLeft = `6px solid ${DECKS[deckKey].theme.edgeLight}`;
+      button.addEventListener('click', () => {
+        selection.deckKey = deckKey;
+        this.renderOnlineDecks(selection);
+      });
+      return button;
+    }));
+  }
+
+  setOnlineStatus(text) {
+    this.onlineStatus.textContent = text;
+  }
+
+  renderSkirmish(selection) {
+    this.skirmishCommanders.replaceChildren(...COMMANDERS.map((commander) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `game-button is-secondary is-small${selection.commanderKey === commander.key ? ' is-active' : ''}`;
+      button.textContent = commander.name;
+      button.addEventListener('click', () => {
+        selection.commanderKey = commander.key;
+        this.renderSkirmish(selection);
+      });
+      return button;
+    }));
+    this.skirmishDecks.replaceChildren(...DECK_ORDER.map((deckKey) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `game-button is-secondary is-small${selection.deckKey === deckKey ? ' is-active' : ''}`;
+      button.textContent = DECKS[deckKey].name;
+      button.style.borderLeft = `6px solid ${DECKS[deckKey].theme.edgeLight}`;
+      button.addEventListener('click', () => {
+        selection.deckKey = deckKey;
+        this.renderSkirmish(selection);
+      });
+      return button;
+    }));
+    this.renderDifficulty(selection.difficultyKey);
+  }
+
+  buildSendCards() {
+    SEND_CARDS.forEach((card) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'send-card';
+      button.dataset.cardKey = card.key;
+      button.innerHTML = `<span class="send-card-name">${card.name}</span><span class="send-card-cost">${card.biomassCost} bio</span><span class="send-card-key">key ${card.hotkey.toUpperCase()}</span><span class="send-card-cooldown"></span>`;
+      button.title = describeCard(card);
+      this.sendCards.appendChild(button);
+      this.cardButtons.set(card.key, button);
+    });
+  }
+
+  showOverlay(overlay) {
+    [this.menuOverlay, this.pauseOverlay, this.endOverlay].forEach((candidate) => candidate.classList.toggle('is-hidden', candidate !== overlay));
+  }
+
+  renderDifficulty(difficultyKey) {
+    this.difficultyButtons.forEach((button) => button.classList.toggle('is-active', button.dataset.difficulty === difficultyKey));
+  }
+
+  renderHud(client) {
+    const sim = client.sim;
+    if (sim === null) return;
+    const you = sim.sides[client.side];
+    const rival = sim.sides[sim.opponentOf(client.side)];
+    this.coreYou.textContent = String(you.coreHp);
+    this.coreRival.textContent = String(rival.coreHp);
+    this.rivalLabel.textContent = `${client.commander.name} core`;
+    this.pauseButton.disabled = client.mode === MODE_ONLINE;
+    this.scrap.textContent = String(Math.floor(you.scrap));
+    this.biomass.textContent = `${Math.floor(you.biomass)} / ${Math.floor(sim.biomassCap)} (+${sim.biomassRegenFor(you).toFixed(1)}/s)`;
+    this.power.textContent = `${sim.powerUsed(you)} / ${MATCH_RULES.reactorPowerCap}`;
+    this.clock.textContent = sim.isSuddenDeath ? `${formatClock(sim.clockS)} bleed` : formatClock(sim.clockS);
+    this.fastForwardButton.textContent = client.isFastForward ? `Speed ${MATCH_RULES.fastForwardTimeScale}x` : 'Speed 1x';
+    this.fastForwardButton.classList.toggle('is-active', client.isFastForward);
+    this.pauseButton.textContent = client.phase === PHASE_PAUSED ? 'Resume' : 'Pause';
+    SEND_CARDS.forEach((card) => {
+      const button = this.cardButtons.get(card.key);
+      const cooldown = you.cardCooldowns[card.key] ?? 0;
+      button.classList.toggle('is-active', client.selectedCardKey === card.key);
+      button.classList.toggle('is-unaffordable', you.biomass < card.biomassCost || cooldown > 0);
+      button.querySelector('.send-card-cooldown').style.width = `${(cooldown / card.cooldownS) * 100}%`;
+    });
+    this.renderHint(client, you, sim);
+  }
+
+  renderHint(client, you, sim) {
+    if (client.hoveredCreep !== null) {
+      const type = client.hoveredCreep.type;
+      this.sendHint.textContent = `${type.name}: ${Math.ceil(client.hoveredCreep.hp)} hp, ${Math.round(type.kineticResistPct * 100)}% kinetic resist, ${Math.round(type.energyResistPct * 100)}% energy resist${type.isSlowImmune ? ', immune to cryo' : ''}${type.regenHpPerS > 0 ? ', regenerates' : ''}.`;
+      return;
+    }
+    if (client.selectedCardKey !== null) {
+      const card = SEND_CARDS.find((candidate) => candidate.key === client.selectedCardKey);
+      this.sendHint.textContent = card.kind === CARD_KIND_CREEPS
+        ? `${card.name}: ${card.role} Click a breach marker on the rival hull to drop it.`
+        : `${card.name}: ${card.role} Click anywhere on the rival deck to drop it.`;
+      return;
+    }
+    const tower = client.menus.selectedTower;
+    if (tower !== null && !tower.type.isBulkhead) {
+      const stats = tower.stats;
+      this.sendHint.textContent = `${tower.type.name} level ${tower.level}: ${stats.damage} ${tower.type.damageType}, ${stats.attacksPerS.toFixed(1)} shots/s, range ${stats.rangeTiles.toFixed(1)} tiles, targeting ${tower.targetMode}.`;
+      return;
+    }
+    const bulkheads = you.towers.filter((candidate) => candidate.type.isBulkhead).length;
+    this.sendHint.textContent = `Open ducts (D1, D2) are shortcuts: seal a mouth to close one. Bulkheads ${bulkheads} of ${MATCH_RULES.bulkheadCap}. Swarm HP x${sim.creepHpMultiplier.toFixed(2)}.`;
+  }
+
+  showEnd(client, hasNextCommander) {
+    const sim = client.sim;
+    const won = sim.winnerSide === client.side;
+    const drew = sim.winnerSide === null;
+    const commander = client.commander;
+    this.endTitle.textContent = drew ? 'Both reactors dark' : (won ? `${commander.name} breached` : 'Reactor lost');
+    const line = drew ? '' : ` ${commander.name}: "${won ? commander.loseLine : commander.winLine}"`;
+    this.endSummary.textContent = `Match lasted ${formatClock(sim.clockS)}. You destroyed ${client.stats.kills} of the swarm and dropped ${client.stats.sends} pods; ${client.stats.coreHitsTaken} bodies reached your core. Rival core ended at ${sim.sides[sim.opponentOf(client.side)].coreHp}, yours at ${sim.sides[client.side].coreHp}.${line}`;
+    this.nextCommanderButton.classList.toggle('is-hidden', !hasNextCommander);
+    elementById('play-again-button').classList.toggle('is-hidden', client.mode === MODE_ONLINE);
+    this.showOverlay(this.endOverlay);
+  }
+}
+
+function spawnEffectsFromEvents(client, events) {
+  const effects = client.effects;
+  const random = client.effectRandom;
+  events.forEach((event) => {
+    if (event.type === EVENT_HIT) {
+      const color = event.kind === PROJECTILE_ARC ? PALETTE.arcBolt : (event.kind === PROJECTILE_FLAME ? PALETTE.flame : PALETTE.round);
+      for (let index = 0; index < DRAW_SIZES.sparksPerHit; index += 1) {
+        const angle = random() * Math.PI * 2;
+        effects.push({ kind: 'spark', x: event.x, y: event.y, ttlS: DRAW_SIZES.sparkTtlS, maxTtlS: DRAW_SIZES.sparkTtlS, color, velocityX: Math.cos(angle) * DRAW_SIZES.sparkSpeedPxPerS, velocityY: Math.sin(angle) * DRAW_SIZES.sparkSpeedPxPerS });
+      }
+      if (event.splashRadiusPx > 0) effects.push({ kind: 'burst', x: event.x, y: event.y, radiusPx: event.splashRadiusPx * 0.6, ttlS: DRAW_SIZES.hitEffectTtlS, maxTtlS: DRAW_SIZES.hitEffectTtlS, color: PALETTE.muzzleFlash });
+      return;
+    }
+    if (event.type === EVENT_EMP) {
+      effects.push({ kind: 'ring', x: event.x, y: event.y, radiusPx: event.radiusPx, ttlS: DRAW_SIZES.deathEffectTtlS, maxTtlS: DRAW_SIZES.deathEffectTtlS, color: PALETTE.empArc });
+      effects.push({ kind: 'burst', x: event.x, y: event.y, radiusPx: event.radiusPx * 0.5, ttlS: DRAW_SIZES.hitEffectTtlS, maxTtlS: DRAW_SIZES.hitEffectTtlS, color: PALETTE.empArc });
+      return;
+    }
+    if (event.type === EVENT_BULKHEAD_FAILED || event.type === EVENT_BULKHEAD_CUT) {
+      effects.push({ kind: 'burst', x: event.x, y: event.y, radiusPx: TILE_SIZE_PX * 0.6, ttlS: DRAW_SIZES.deathEffectTtlS, maxTtlS: DRAW_SIZES.deathEffectTtlS, color: PALETTE.flame });
+      for (let index = 0; index < DRAW_SIZES.sparksPerHit * 2; index += 1) {
+        const angle = random() * Math.PI * 2;
+        effects.push({ kind: 'spark', x: event.x, y: event.y, ttlS: DRAW_SIZES.sparkTtlS, maxTtlS: DRAW_SIZES.sparkTtlS, color: PALETTE.flameCore, velocityX: Math.cos(angle) * DRAW_SIZES.sparkSpeedPxPerS, velocityY: Math.sin(angle) * DRAW_SIZES.sparkSpeedPxPerS });
+      }
+      return;
+    }
+    if (event.type === EVENT_DEATH) {
+      effects.push({ kind: 'puff', x: event.x, y: event.y, radiusPx: event.radiusPx, ttlS: DRAW_SIZES.deathEffectTtlS, maxTtlS: DRAW_SIZES.deathEffectTtlS, color: event.color });
+      if (event.side === client.side) {
+        client.stats.kills += 1;
+        effects.push({ kind: 'text', x: event.x, y: event.y - event.radiusPx, text: `+${event.bounty}`, ttlS: DRAW_SIZES.floatingTextTtlS, maxTtlS: DRAW_SIZES.floatingTextTtlS, color: PALETTE.floatingScrap });
+      }
+      return;
+    }
+    if (event.type === EVENT_CORE_HIT) {
+      if (event.side === client.side) client.stats.coreHitsTaken += 1;
+      effects.push({ kind: 'text', x: event.x, y: event.y - TILE_SIZE_PX * 0.5, text: `-${event.damage}`, ttlS: DRAW_SIZES.floatingTextTtlS, maxTtlS: DRAW_SIZES.floatingTextTtlS, color: PALETTE.floatingDamage });
+      effects.push({ kind: 'ring', x: event.x, y: event.y, radiusPx: DRAW_SIZES.coreRadiusPx * 1.5, ttlS: DRAW_SIZES.hitEffectTtlS, maxTtlS: DRAW_SIZES.hitEffectTtlS, color: PALETTE.coreDanger });
+      return;
+    }
+    if (event.type === EVENT_POD_LANDED) {
+      effects.push({ kind: 'ring', x: event.x, y: event.y, radiusPx: MATCH_RULES.podImpactRadiusPx, ttlS: DRAW_SIZES.deathEffectTtlS, maxTtlS: DRAW_SIZES.deathEffectTtlS, color: PALETTE.podFlame });
+    }
+  });
+}
+
+function updateEffects(effects, deltaS) {
+  effects.forEach((effect) => {
+    effect.ttlS -= deltaS;
+    if (effect.kind === 'text') effect.y -= DRAW_SIZES.floatingTextRiseSpeedPxPerS * deltaS;
+    if (effect.kind === 'spark') {
+      effect.x += effect.velocityX * deltaS;
+      effect.y += effect.velocityY * deltaS;
+    }
+  });
+  return effects.filter((effect) => effect.ttlS > 0);
+}
+
+function renderFrame(context, client) {
+  context.save();
+  if (VIEW.isFlipped) {
+    context.translate(CANVAS_WIDTH_PX, 0);
+    context.scale(-1, 1);
+  }
+  renderWorld(context, client);
+  context.restore();
+}
+
+function renderWorld(context, client) {
+  context.drawImage(client.backgroundCanvas, 0, 0);
+  const sim = client.sim;
+  if (sim === null) return;
+  const timeS = client.timeS;
+  context.fillStyle = PALETTE.rivalTint;
+  context.fillRect(sim.opponentOf(client.side) * HALF_COLUMNS * TILE_SIZE_PX, 0, HALF_COLUMNS * TILE_SIZE_PX, CANVAS_HEIGHT_PX);
+  drawOpenDucts(context, sim, timeS);
+  sim.sides.forEach((state) => drawCore(context, sim.map.coresBySide[state.side], state.coreHp, timeS));
+
+  const hover = client.hoverTile;
+  if (hover !== null && client.menus.menu === null && client.selectedCardKey === null && sideOfColumn(hover.col) === client.side) {
+    const existing = sim.towerAt(hover.col, hover.row);
+    if (existing !== null && !existing.type.isBulkhead) drawRangeRing(context, existing.x, existing.y, existing.rangePx);
+    else if (existing === null) {
+      const isSealable = sim.isSealableTile(hover.col, hover.row);
+      drawTileHighlight(context, hover.col, hover.row, isSealable ? sim.canBuildAt(client.side, hover.col, hover.row, 'bulkhead') : sim.canBuildAt(client.side, hover.col, hover.row, WEAPON_TYPE_ORDER[0]));
+    }
+  }
+  const selected = client.menus.selectedTower;
+  if (selected !== null && !selected.type.isBulkhead) {
+    drawRangeRing(context, selected.x, selected.y, selected.rangePx);
+    drawSightLines(context, sim, selected, sim.sides[client.side].creeps);
+  }
+
+  drawSealedHatches(context, sim, timeS);
+  sim.sides.forEach((state) => state.towers.forEach((tower) => drawTower(context, tower, timeS)));
+  sim.sides.forEach((state) => state.creeps.forEach((creep) => drawCreep(context, creep, timeS, creep.isHidden(sim.map))));
+  sim.sides.forEach((state) => state.projectiles.forEach((projectile) => drawProjectile(context, projectile)));
+  client.effects.forEach((effect) => drawEffect(context, effect));
+  sim.sides.forEach((state) => state.incomingPods.forEach((pod) => drawPod(context, pod, timeS)));
+  const selectedCard = client.selectedCardKey === null ? null : SEND_CARDS.find((card) => card.key === client.selectedCardKey);
+  if (selectedCard !== null && selectedCard.kind === CARD_KIND_CREEPS) drawBreachMarkers(context, sim, sim.opponentOf(client.side), client.hoverBreachIndex, timeS);
+  if (selectedCard !== null && selectedCard.kind !== CARD_KIND_CREEPS && hover !== null && sim.isSabotageTargetable(sim.opponentOf(client.side), hover.col, hover.row)) {
+    drawSabotageMarker(context, selectedCard, hover.col, hover.row, timeS);
+  }
+  client.menus.draw(context, client.hoverPoint);
+  if (client.bannerTtlS > 0) drawBanner(context, client.commander, client.bannerTtlS);
+}
+
+function drawBanner(context, commander, ttlS) {
+  const fade = Math.min(1, ttlS / 0.6);
+  const centerX = CANVAS_WIDTH_PX / 2;
+  const centerY = CANVAS_HEIGHT_PX * 0.18;
+  context.globalAlpha = fade;
+  traceChamferedRect(context, centerX, centerY, DRAW_SIZES.bannerHalfWidthPx, DRAW_SIZES.bannerHalfHeightPx, 10);
+  context.fillStyle = PALETTE.bannerFill;
+  context.fill();
+  context.strokeStyle = PALETTE.menuEdge;
+  context.lineWidth = 2;
+  context.stroke();
+  context.textAlign = 'center';
+  context.fillStyle = PALETTE.bannerText;
+  context.font = `700 ${DRAW_SIZES.bannerTitleFontPx}px 'Chakra Petch', sans-serif`;
+  drawLabel(context, `${commander.name}, ${commander.title}`, centerX, centerY - 6);
+  context.fillStyle = PALETTE.bannerSub;
+  context.font = `600 ${DRAW_SIZES.bannerSubFontPx}px 'Rajdhani', sans-serif`;
+  drawLabel(context, `"${commander.taunt}"`, centerX, centerY + 18);
+  context.globalAlpha = 1;
+}
+
+// ---- input helpers -----------------------------------------------------------
+
+function breachIndexNear(sim, targetSide, point) {
+  const reach = DRAW_SIZES.breachMarkerRadiusPx * 1.8;
+  const index = sim.map.breachesBySide[targetSide].findIndex((breach, candidateIndex) => sim.isBreachOpen(targetSide, candidateIndex)
+    && distanceBetween(point.x, point.y, tileCenterX(breach.col), tileCenterY(breach.row)) <= reach);
+  return index === -1 ? null : index;
+}
+
+function handleCanvasClick(client, point) {
+  const sim = client.sim;
+  const menus = client.menus;
+  if (client.selectedCardKey !== null) {
+    const card = SEND_CARDS.find((candidate) => candidate.key === client.selectedCardKey);
+    const targetSide = sim.opponentOf(client.side);
+    if (card.kind === CARD_KIND_CREEPS) {
+      const breachIndex = breachIndexNear(sim, targetSide, point);
+      if (breachIndex !== null) {
+        client.pendingCommands.push({ side: client.side, type: COMMAND_SEND, cardKey: card.key, target: { kind: SEND_TARGET_BREACH, breachIndex } });
+        client.stats.sends += 1;
+        client.selectedCardKey = null;
+        return;
+      }
+    } else {
+      const col = Math.floor(point.x / TILE_SIZE_PX);
+      const row = Math.floor(point.y / TILE_SIZE_PX);
+      if (sim.isSabotageTargetable(targetSide, col, row)) {
+        client.pendingCommands.push({ side: client.side, type: COMMAND_SEND, cardKey: card.key, target: { kind: SEND_TARGET_POINT, col, row } });
+        client.stats.sends += 1;
+        client.selectedCardKey = null;
+        return;
+      }
+    }
+    client.selectedCardKey = null;
+  }
+  const option = menus.optionAt(point.x, point.y);
+  if (option !== null) {
+    const command = menus.commandFor(option);
+    if (command === null) return;
+    client.pendingCommands.push(command);
+    if (command.type === COMMAND_BUILD || command.type === COMMAND_SELL) menus.close();
+    return;
+  }
+  const col = Math.floor(point.x / TILE_SIZE_PX);
+  const row = Math.floor(point.y / TILE_SIZE_PX);
+  if (!isInsideGrid(col, row) || sideOfColumn(col) !== client.side) {
+    menus.close();
+    return;
+  }
+  const existing = sim.towerAt(col, row);
+  if (existing !== null) {
+    menus.openTower(existing);
+    return;
+  }
+  const tile = sim.map.tileAt(col, row);
+  if (tile === TILE_DECK || (SEALABLE_TILES.has(tile) && sim.canBuildAt(client.side, col, row, 'bulkhead'))) {
+    menus.openBuild(col, row);
+    return;
+  }
+  menus.close();
+}
+
+function handleKey(client, key) {
+  const menus = client.menus;
+  const card = SEND_CARDS.find((candidate) => candidate.hotkey === key);
+  if (card) {
+    client.selectedCardKey = client.selectedCardKey === card.key ? null : card.key;
+    return true;
+  }
+  const weaponType = WEAPON_TYPE_ORDER.find((typeKey) => TOWER_TYPES[typeKey].hotkey === key);
+  if (weaponType) {
+    const target = menus.menu !== null && menus.menu.kind === MENU_KIND_BUILD ? menus.menu : client.hoverTile;
+    if (target === null) return false;
+    client.pendingCommands.push({ side: client.side, type: COMMAND_BUILD, col: target.col, row: target.row, typeKey: weaponType });
+    menus.close();
+    return true;
+  }
+  const selected = menus.selectedTower;
+  if (key === 'u' && selected !== null) {
+    client.pendingCommands.push({ side: client.side, type: COMMAND_UPGRADE, col: selected.col, row: selected.row });
+    return true;
+  }
+  if (key === 'x' && selected !== null) {
+    client.pendingCommands.push({ side: client.side, type: COMMAND_SELL, col: selected.col, row: selected.row });
+    menus.close();
+    return true;
+  }
+  if (key === 'Escape') {
+    menus.close();
+    client.selectedCardKey = null;
+    return true;
+  }
+  if (key === 'f') {
+    client.isFastForward = !client.isFastForward;
+    return true;
+  }
+  return false;
+}
+
+// ---- bootstrap -------------------------------------------------------------------
+
+function main() {
+  const ui = new Interface();
+  const canvas = elementById('game-canvas');
+  const context = canvas.getContext('2d');
+  const maps = new Map();
+  const backgrounds = new Map();
+  DECK_ORDER.forEach((deckKey) => {
+    const map = new StationMap(DECKS[deckKey].layout);
+    maps.set(deckKey, map);
+    backgrounds.set(deckKey, renderBackground(map, DECKS[deckKey].theme));
+  });
+  const campaign = loadCampaign();
+  const skirmish = { commanderKey: COMMANDERS[0].key, deckKey: DECK_ORDER[0], difficultyKey: 'normal' };
+  const online = { deckKey: DECK_ORDER[0], net: null, pendingSnapshot: null, opponentName: '' };
+  const client = {
+    side: SIDE_PORT,
+    mode: MODE_OFFLINE,
+    phase: PHASE_MENU,
+    sim: null,
+    ai: null,
+    menus: null,
+    commander: COMMANDERS[0],
+    deckKey: DECK_ORDER[0],
+    isCampaignMatch: false,
+    bannerTtlS: 0,
+    selectedCardKey: null,
+    hoverTile: null,
+    hoverPoint: null,
+    hoverBreachIndex: null,
+    hoveredCreep: null,
+    effects: [],
+    effectRandom: createSeededRandom(99),
+    pendingCommands: [],
+    isFastForward: false,
+    timeS: 0,
+    accumulatorS: 0,
+    stats: { kills: 0, sends: 0, coreHitsTaken: 0 },
+    backgroundCanvas: backgrounds.get(DECK_ORDER[0]),
+  };
+  let lastFrameMs = performance.now();
+
+  function canvasPointFromEvent(event) {
+    const bounds = canvas.getBoundingClientRect();
+    const screenX = (event.clientX - bounds.left) * (CANVAS_WIDTH_PX / bounds.width);
+    return { x: VIEW.isFlipped ? CANVAS_WIDTH_PX - screenX : screenX, y: (event.clientY - bounds.top) * (CANVAS_HEIGHT_PX / bounds.height) };
+  }
+
+  function tileFromPoint(point) {
+    const col = Math.floor(point.x / TILE_SIZE_PX);
+    const row = Math.floor(point.y / TILE_SIZE_PX);
+    return isInsideGrid(col, row) ? { col, row } : null;
+  }
+
+  function resetMatchState() {
+    client.menus = new RadialMenus(client.sim, client.side);
+    client.bannerTtlS = BANNER_TTL_S;
+    client.phase = PHASE_PLAYING;
+    client.selectedCardKey = null;
+    client.effects = [];
+    client.pendingCommands = [];
+    client.isFastForward = false;
+    client.timeS = 0;
+    client.accumulatorS = 0;
+    client.stats = { kills: 0, sends: 0, coreHitsTaken: 0 };
+    ui.showOverlay(null);
+    canvas.focus();
+  }
+
+  function startMatch(commanderKey, deckKey, difficultyKey, isCampaignMatch) {
+    const commander = commanderByKey(commanderKey);
+    const difficulty = AI_DIFFICULTIES[difficultyKey];
+    const map = maps.get(deckKey);
+    client.mode = MODE_OFFLINE;
+    client.side = SIDE_PORT;
+    VIEW.isFlipped = false;
+    client.commander = commander;
+    client.deckKey = deckKey;
+    client.isCampaignMatch = isCampaignMatch;
+    client.backgroundCanvas = backgrounds.get(deckKey);
+    client.sim = new Simulation(map, [
+      { scrapIncomePct: 1, biomassRegenPct: 1 },
+      { scrapIncomePct: commander.economy.scrapIncomePct * difficulty.economyPct, biomassRegenPct: commander.economy.biomassRegenPct * difficulty.economyPct },
+    ]);
+    client.ai = new CommanderAi(SIDE_STARBOARD, buildAiProfile(commander, difficulty), client.sim);
+    resetMatchState();
+  }
+
+  function startOnlineMatch(side, deckKey, opponentName) {
+    client.mode = MODE_ONLINE;
+    client.side = side;
+    VIEW.isFlipped = side === SIDE_STARBOARD;
+    client.commander = {
+      key: 'online', name: opponentName, title: 'Rival crew', taunt: 'Salvage rights are decided at the reactor.',
+      winLine: 'Better luck on the next derelict.', loseLine: 'Good hold. The ship is yours.', deckKey,
+    };
+    client.deckKey = deckKey;
+    client.isCampaignMatch = false;
+    client.backgroundCanvas = backgrounds.get(deckKey);
+    client.sim = new Simulation(maps.get(deckKey), [{ scrapIncomePct: 1, biomassRegenPct: 1 }, { scrapIncomePct: 1, biomassRegenPct: 1 }]);
+    client.ai = null;
+    online.pendingSnapshot = null;
+    resetMatchState();
+    ui.showTab('campaign');
+  }
+
+  function connectOnline(afterOpen) {
+    const url = ui.onlineUrl.value.trim();
+    const name = ui.onlineName.value.trim().slice(0, 16) || 'Salvager';
+    if (url.length === 0) {
+      ui.setOnlineStatus('Enter the server address first.');
+      return;
+    }
+    try {
+      window.localStorage.setItem(ONLINE_URL_STORAGE_KEY, url);
+      window.localStorage.setItem(ONLINE_NAME_STORAGE_KEY, name);
+    } catch (error) {
+      // Preferences simply will not persist.
+    }
+    if (online.net !== null) online.net.close();
+    ui.setOnlineStatus(`Connecting to ${url}`);
+    online.net = new NetClient(url, {
+      onOpen: () => {
+        online.net.send({ type: 'hello', name });
+        afterOpen();
+      },
+      onClose: () => {
+        ui.setOnlineStatus('Disconnected from server.');
+        if (client.mode === MODE_ONLINE && client.phase === PHASE_PLAYING) {
+          client.sim.isOver = true;
+          client.sim.winnerSide = null;
+          finishMatch();
+        }
+        online.net = null;
+      },
+      onError: () => ui.setOnlineStatus('Could not reach the server. Check the address (wss:// for hosted servers).'),
+      onMessage: handleServerMessage,
+    });
+  }
+
+  function handleServerMessage(message) {
+    if (message.type === 'queued') ui.setOnlineStatus('In the queue. Waiting for another crew.');
+    else if (message.type === 'room') ui.setOnlineStatus(`Room ${message.code}: ${message.players.join(' vs ')}. ${message.players.length < 2 ? 'Share the code.' : 'Starting.'}`);
+    else if (message.type === 'start') {
+      ui.setOnlineStatus(`Match started against ${message.opponentName}.`);
+      online.opponentName = message.opponentName;
+      startOnlineMatch(message.side, message.deckKey, message.opponentName);
+    } else if (message.type === 'snapshot') online.pendingSnapshot = message.snapshot;
+    else if (message.type === 'over') {
+      if (client.mode !== MODE_ONLINE || client.sim === null) return;
+      client.sim.isOver = true;
+      client.sim.winnerSide = message.winnerSide;
+      ui.setOnlineStatus(message.reason);
+      finishMatch();
+    } else if (message.type === 'error') ui.setOnlineStatus(message.message);
+  }
+
+  function startCampaignMatch(commanderKey) {
+    const commander = commanderByKey(commanderKey);
+    startMatch(commanderKey, commander.deckKey, 'normal', true);
+  }
+
+  function nextCommanderKey() {
+    const index = COMMANDERS.findIndex((candidate) => candidate.key === client.commander.key);
+    return index >= 0 && index < COMMANDERS.length - 1 ? COMMANDERS[index + 1].key : null;
+  }
+
+  function openMenu() {
+    if (client.mode === MODE_ONLINE && online.net !== null && online.net.isOpen) online.net.send({ type: 'leave' });
+    client.phase = PHASE_MENU;
+    client.sim = null;
+    VIEW.isFlipped = false;
+    ui.renderOnlineDecks(online);
+    ui.renderCampaign(campaign, startCampaignMatch);
+    ui.renderSkirmish(skirmish);
+    ui.showOverlay(ui.menuOverlay);
+  }
+
+  function finishMatch() {
+    if (client.phase === PHASE_ENDED) return;
+    client.phase = PHASE_ENDED;
+    const won = client.sim.winnerSide === client.side;
+    if (client.isCampaignMatch && won && !campaign.beaten.includes(client.commander.key)) {
+      campaign.beaten.push(client.commander.key);
+      saveCampaign(campaign);
+    }
+    ui.showEnd(client, client.isCampaignMatch && won && nextCommanderKey() !== null);
+  }
+
+  function setPaused(isPaused) {
+    if (client.mode === MODE_ONLINE) return;
+    if (client.phase !== PHASE_PLAYING && client.phase !== PHASE_PAUSED) return;
+    client.phase = isPaused ? PHASE_PAUSED : PHASE_PLAYING;
+    ui.showOverlay(isPaused ? ui.pauseOverlay : null);
+  }
+
+  function stepSimulation(frameDeltaS) {
+    const timeScale = client.isFastForward ? MATCH_RULES.fastForwardTimeScale : 1;
+    client.accumulatorS += Math.min(frameDeltaS, MATCH_RULES.tickS * MATCH_RULES.maxStepsPerFrame) * timeScale;
+    let steps = 0;
+    if (client.mode === MODE_ONLINE && online.pendingSnapshot !== null) {
+      hydrateSimulation(client.sim, online.pendingSnapshot);
+      online.pendingSnapshot = null;
+    }
+    while (client.accumulatorS >= MATCH_RULES.tickS && steps < MATCH_RULES.maxStepsPerFrame) {
+      client.accumulatorS -= MATCH_RULES.tickS;
+      steps += 1;
+      let commands = [];
+      if (client.mode === MODE_ONLINE) {
+        client.pendingCommands.forEach((command) => online.net.send({ type: 'command', command }));
+      } else {
+        commands = [...client.pendingCommands, ...client.ai.think(MATCH_RULES.tickS, client.sim)];
+      }
+      client.pendingCommands = [];
+      const events = client.sim.step(MATCH_RULES.tickS, commands);
+      spawnEffectsFromEvents(client, events);
+      client.effects = updateEffects(client.effects, MATCH_RULES.tickS);
+      client.timeS += MATCH_RULES.tickS;
+      client.bannerTtlS = Math.max(0, client.bannerTtlS - MATCH_RULES.tickS);
+    }
+    if (client.menus.selectedTower !== null && !client.sim.sides[client.side].towers.includes(client.menus.selectedTower)) client.menus.close();
+  }
+
+  function frame(nowMs) {
+    const frameDeltaS = (nowMs - lastFrameMs) / 1000;
+    lastFrameMs = nowMs;
+    if (client.phase === PHASE_PLAYING) {
+      stepSimulation(frameDeltaS);
+      if (client.sim.isOver && client.mode === MODE_OFFLINE) finishMatch();
+    }
+    if (client.sim !== null) {
+      const you = client.sim.sides[client.side];
+      client.hoveredCreep = client.hoverPoint === null ? null : (you.creeps.find((creep) => distanceBetween(client.hoverPoint.x, client.hoverPoint.y, creep.x, creep.y) <= creep.radiusPx + 4) ?? null);
+      client.hoverBreachIndex = client.hoverPoint === null ? null : breachIndexNear(client.sim, client.sim.opponentOf(client.side), client.hoverPoint);
+    }
+    renderFrame(context, client);
+    ui.renderHud(client);
+    window.requestAnimationFrame(frame);
+  }
+
+  canvas.addEventListener('mousemove', (event) => {
+    client.hoverPoint = canvasPointFromEvent(event);
+    client.hoverTile = tileFromPoint(client.hoverPoint);
+  });
+  canvas.addEventListener('mouseleave', () => {
+    client.hoverPoint = null;
+    client.hoverTile = null;
+  });
+  canvas.addEventListener('click', (event) => {
+    if (client.phase !== PHASE_PLAYING) return;
+    handleCanvasClick(client, canvasPointFromEvent(event));
+  });
+  canvas.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    if (client.phase !== PHASE_PLAYING) return;
+    client.menus.close();
+    client.selectedCardKey = null;
+  });
+  window.addEventListener('keydown', (event) => {
+    if (event.target instanceof HTMLInputElement) return;
+    if (client.phase !== PHASE_PLAYING && client.phase !== PHASE_PAUSED) return;
+    if (event.key === ' ') event.preventDefault();
+    if (event.repeat) return;
+    if (event.key === 'p') {
+      setPaused(client.phase === PHASE_PLAYING);
+      return;
+    }
+    if (client.phase !== PHASE_PLAYING) return;
+    handleKey(client, event.key);
+  });
+  ui.sendCards.addEventListener('click', (event) => {
+    const button = event.target.closest('.send-card');
+    if (button === null || client.phase !== PHASE_PLAYING) return;
+    client.selectedCardKey = client.selectedCardKey === button.dataset.cardKey ? null : button.dataset.cardKey;
+    client.menus.close();
+  });
+  ui.fastForwardButton.addEventListener('click', () => {
+    client.isFastForward = !client.isFastForward;
+  });
+  ui.pauseButton.addEventListener('click', () => setPaused(client.phase === PHASE_PLAYING));
+  ui.difficultyButtons.forEach((button) => button.addEventListener('click', () => {
+    skirmish.difficultyKey = button.dataset.difficulty;
+    ui.renderDifficulty(skirmish.difficultyKey);
+  }));
+  elementById('start-skirmish-button').addEventListener('click', () => startMatch(skirmish.commanderKey, skirmish.deckKey, skirmish.difficultyKey, false));
+  elementById('reset-campaign-button').addEventListener('click', () => {
+    campaign.beaten = [];
+    saveCampaign(campaign);
+    ui.renderCampaign(campaign, startCampaignMatch);
+  });
+  elementById('resume-button').addEventListener('click', () => setPaused(false));
+  elementById('abandon-button').addEventListener('click', openMenu);
+  elementById('play-again-button').addEventListener('click', () => {
+    if (client.isCampaignMatch) startCampaignMatch(client.commander.key);
+    else startMatch(skirmish.commanderKey, skirmish.deckKey, skirmish.difficultyKey, false);
+  });
+  ui.onlineQuickButton.addEventListener('click', () => connectOnline(() => online.net.send({ type: 'quick', deckKey: online.deckKey })));
+  ui.onlineCreateButton.addEventListener('click', () => connectOnline(() => online.net.send({ type: 'create', deckKey: online.deckKey })));
+  ui.onlineJoinButton.addEventListener('click', () => {
+    const code = ui.onlineCode.value.trim().toUpperCase();
+    if (code.length === 0) {
+      ui.setOnlineStatus('Enter a room code.');
+      return;
+    }
+    connectOnline(() => online.net.send({ type: 'join', code }));
+  });
+  try {
+    ui.onlineUrl.value = window.localStorage.getItem(ONLINE_URL_STORAGE_KEY) ?? '';
+    ui.onlineName.value = window.localStorage.getItem(ONLINE_NAME_STORAGE_KEY) ?? '';
+  } catch (error) {
+    // Defaults stay empty.
+  }
+  ui.nextCommanderButton.addEventListener('click', () => {
+    const key = nextCommanderKey();
+    if (key !== null) startCampaignMatch(key);
+  });
+  elementById('back-to-menu-button').addEventListener('click', openMenu);
+
+  openMenu();
+  window.requestAnimationFrame(frame);
+}
+
+main();

@@ -1,0 +1,16 @@
+{
+  "name": "deadlight-hull-breach",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "Deadlight: Hull Breach. PvP tower defense on a dead ship. Shared simulation, static client, authoritative WebSocket server.",
+  "scripts": {
+    "build": "node build.js",
+    "start": "npm run build && node server/server.js",
+    "serve-client": "npm run build && npx --yes serve docs",
+    "test": "npm run build && node test/match.test.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

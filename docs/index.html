@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Deadlight: Hull Breach</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --page-background: #0b0d10;
+      --panel: #171b21;
+      --panel-dark: #0f1216;
+      --panel-edge: #2c333c;
+      --text: #d7dde5;
+      --text-dim: #8a95a3;
+      --amber: #f2a93b;
+      --amber-dark: #a86f1c;
+      --cyan: #57d3ff;
+      --biomass: #8ee06b;
+      --danger: #e2513f;
+      --font-display: 'Chakra Petch', 'Rajdhani', 'Segoe UI', sans-serif;
+      --font-body: 'Rajdhani', 'Segoe UI', Tahoma, sans-serif;
+      --stage-max-width: 960px;
+      --radius: 6px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --page-background: #07090b; }
+    }
+    :root[data-theme="dark"] { --page-background: #07090b; }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--page-background);
+      color: var(--text);
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 1.05rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px;
+      gap: 10px;
+    }
+    .hud, .send-bar {
+      width: 100%;
+      max-width: var(--stage-max-width);
+      background: linear-gradient(180deg, var(--panel) 0%, var(--panel-dark) 100%);
+      border: 2px solid var(--panel-edge);
+      border-radius: var(--radius);
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .hud-side { display: flex; align-items: center; gap: 14px; }
+    .hud-side.is-rival { margin-left: auto; }
+    .hud-stat { display: flex; align-items: baseline; gap: 6px; }
+    .hud-stat-label { color: var(--text-dim); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .hud-stat-value { font-family: var(--font-display); font-weight: 700; font-size: 1.3rem; line-height: 1; }
+    .hud-stat-value.is-core { color: var(--danger); }
+    .hud-stat-value.is-scrap { color: var(--amber); }
+    .hud-stat-value.is-biomass { color: var(--biomass); }
+    .hud-stat-value.is-clock { color: var(--cyan); }
+    .hud-stat-value.is-power { color: var(--cyan); }
+    .codex { margin: 0; padding-left: 18px; font-size: 0.9rem; line-height: 1.4; display: flex; flex-direction: column; gap: 4px; }
+    .codex strong { color: var(--amber); }
+    .hud-buttons { display: flex; gap: 8px; }
+
+    .game-stage {
+      position: relative;
+      width: 100%;
+      max-width: var(--stage-max-width);
+      aspect-ratio: 20 / 13;
+      border: 2px solid var(--panel-edge);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #14171c;
+    }
+    .game-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; outline: none; }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(5, 7, 9, 0.86);
+      padding: 14px;
+      overflow-y: auto;
+    }
+    .overlay.is-hidden { display: none; }
+    .overlay-panel {
+      width: min(620px, 100%);
+      max-height: 100%;
+      overflow-y: auto;
+      background: linear-gradient(180deg, var(--panel) 0%, var(--panel-dark) 100%);
+      border: 2px solid var(--panel-edge);
+      border-radius: var(--radius);
+      padding: 22px 26px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      text-align: center;
+    }
+    .overlay-title {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: clamp(1.8rem, 5vw, 2.6rem);
+      margin: 0;
+      color: var(--amber);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      line-height: 1;
+    }
+    .overlay-subtitle { margin: 0; color: var(--text-dim); }
+    .overlay-body { margin: 0; line-height: 1.5; }
+    .overlay-section { text-align: left; }
+    .overlay-section h2 {
+      font-family: var(--font-display);
+      font-size: 1rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin: 0 0 6px;
+      color: var(--cyan);
+    }
+    .controls-list { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 0.95rem; }
+    kbd {
+      font-family: var(--font-display);
+      font-weight: 700;
+      background: var(--panel-dark);
+      border: 1px solid var(--panel-edge);
+      border-radius: 4px;
+      padding: 1px 6px;
+      color: var(--amber);
+    }
+    .button-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .game-button {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--panel-dark);
+      background: linear-gradient(180deg, #ffc25e 0%, var(--amber) 100%);
+      border: 2px solid var(--amber-dark);
+      border-radius: var(--radius);
+      padding: 9px 18px;
+      cursor: pointer;
+    }
+    .game-button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .game-button.is-secondary { color: var(--text); background: linear-gradient(180deg, #2a313a 0%, var(--panel) 100%); border-color: var(--panel-edge); }
+    .game-button.is-active { box-shadow: 0 0 0 3px var(--cyan); }
+    .game-button.is-small { font-size: 0.9rem; padding: 6px 12px; }
+    .game-button.is-hidden { display: none; }
+    .game-button:focus-visible, .send-card:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
+
+    .send-cards { display: flex; gap: 8px; flex-wrap: wrap; }
+    .send-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      min-width: 96px;
+      padding: 8px 10px;
+      background: var(--panel-dark);
+      border: 2px solid var(--panel-edge);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--font-body);
+      font-weight: 600;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    .send-card:hover { border-color: var(--biomass); }
+    .send-card.is-active { border-color: var(--biomass); box-shadow: inset 0 0 0 1px var(--biomass); }
+    .send-card.is-unaffordable { opacity: 0.5; }
+    .send-card-name { font-family: var(--font-display); font-size: 0.95rem; }
+    .send-card-cost { color: var(--biomass); font-family: var(--font-display); }
+    .send-card-key { font-size: 0.75rem; color: var(--text-dim); }
+    .send-card-cooldown { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--biomass); width: 0; }
+    .send-hint { color: var(--text-dim); font-size: 0.95rem; margin-left: auto; text-align: right; max-width: 420px; }
+
+    .difficulty-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .online-form { display: flex; gap: 10px; justify-content: center; align-items: flex-end; flex-wrap: wrap; }
+    .online-label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; text-align: left; }
+    .online-input {
+      font-family: var(--font-body);
+      font-size: 1rem;
+      padding: 7px 10px;
+      border-radius: var(--radius);
+      border: 2px solid var(--panel-edge);
+      background: var(--panel-dark);
+      color: var(--text);
+      width: 160px;
+    }
+    .online-input.is-wide { width: 280px; }
+    .online-input:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
+    .online-status { margin: 0; color: var(--cyan); font-size: 0.95rem; min-height: 1.4em; }
+    .tab-row { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+    .tab-button {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      background: transparent;
+      border: 0;
+      border-bottom: 3px solid transparent;
+      color: var(--text-dim);
+      padding: 4px 12px;
+      cursor: pointer;
+    }
+    .tab-button.is-active { color: var(--amber); border-bottom-color: var(--amber); }
+    .tab-panel { display: flex; flex-direction: column; gap: 12px; }
+    .tab-panel.is-hidden { display: none; }
+    .commander-list { display: flex; flex-direction: column; gap: 8px; }
+    .commander-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      background: var(--panel-dark);
+      border: 2px solid var(--panel-edge);
+      border-radius: var(--radius);
+      text-align: left;
+    }
+    .commander-card.is-locked { opacity: 0.45; }
+    .commander-card.is-beaten { border-color: var(--biomass); }
+    .commander-rank {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.4rem;
+      color: var(--amber);
+      width: 34px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .commander-text { flex: 1; }
+    .commander-name { font-family: var(--font-display); font-size: 1.15rem; color: var(--text); line-height: 1.1; }
+    .commander-name span { color: var(--text-dim); font-size: 0.9rem; }
+    .commander-meta { font-size: 0.9rem; color: var(--text-dim); line-height: 1.3; }
+    .select-row { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+    .select-label { font-size: 0.85rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 4px; text-align: center; }
+    @media (max-width: 640px) {
+      .controls-list { grid-template-columns: 1fr; }
+      .hud-side.is-rival { margin-left: 0; }
+      .send-hint { margin-left: 0; max-width: none; text-align: left; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hud">
+    <div class="hud-side">
+      <div class="hud-stat"><span class="hud-stat-label">Core</span><span class="hud-stat-value is-core" id="hud-core-you">30</span></div>
+      <div class="hud-stat"><span class="hud-stat-label">Scrap</span><span class="hud-stat-value is-scrap" id="hud-scrap">0</span></div>
+      <div class="hud-stat"><span class="hud-stat-label">Biomass</span><span class="hud-stat-value is-biomass" id="hud-biomass">0</span></div>
+      <div class="hud-stat"><span class="hud-stat-label">Power</span><span class="hud-stat-value is-power" id="hud-power">0 / 24</span></div>
+    </div>
+    <div class="hud-stat"><span class="hud-stat-label">Clock</span><span class="hud-stat-value is-clock" id="hud-clock">0:00</span></div>
+    <div class="hud-side is-rival">
+      <div class="hud-stat"><span class="hud-stat-label" id="hud-rival-label">Rival core</span><span class="hud-stat-value is-core" id="hud-core-rival">30</span></div>
+      <div class="hud-buttons">
+        <button class="game-button is-secondary is-small" id="fast-forward-button" type="button">Speed 1x</button>
+        <button class="game-button is-secondary is-small" id="pause-button" type="button">Pause</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="game-stage">
+    <canvas class="game-canvas" id="game-canvas" width="960" height="624" tabindex="0" aria-label="Deadlight battlefield"></canvas>
+
+    <section class="overlay" id="menu-overlay" aria-label="Main menu">
+      <div class="overlay-panel">
+        <h1 class="overlay-title">Deadlight: Hull Breach</h1>
+        <p class="overlay-subtitle">Two salvage crews, one dead ship, one reanimation lattice. Hold your reactor. Drop the swarm on theirs.</p>
+        <nav class="tab-row" aria-label="Menu sections">
+          <button class="tab-button is-active" data-tab="campaign" type="button">Campaign</button>
+          <button class="tab-button" data-tab="skirmish" type="button">Skirmish</button>
+          <button class="tab-button" data-tab="online" type="button">Online</button>
+          <button class="tab-button" data-tab="briefing" type="button">Briefing</button>
+        </nav>
+
+        <div class="tab-panel" id="tab-campaign">
+          <p class="overlay-subtitle">Five commanders hold the ship. Breach them in order.</p>
+          <div class="commander-list" id="commander-list"></div>
+          <div class="button-row"><button class="game-button is-secondary is-small" id="reset-campaign-button" type="button">Reset campaign</button></div>
+        </div>
+
+        <div class="tab-panel is-hidden" id="tab-skirmish">
+          <div>
+            <p class="select-label">Commander</p>
+            <div class="select-row" id="skirmish-commanders"></div>
+          </div>
+          <div>
+            <p class="select-label">Deck</p>
+            <div class="select-row" id="skirmish-decks"></div>
+          </div>
+          <div>
+            <p class="select-label">Difficulty</p>
+            <div class="difficulty-row">
+              <button class="game-button is-secondary is-small" data-difficulty="easy" type="button">Easy</button>
+              <button class="game-button is-secondary is-small is-active" data-difficulty="normal" type="button">Normal</button>
+              <button class="game-button is-secondary is-small" data-difficulty="hard" type="button">Hard</button>
+            </div>
+          </div>
+          <div class="button-row"><button class="game-button" id="start-skirmish-button" type="button">Board the ship</button></div>
+        </div>
+
+        <div class="tab-panel is-hidden" id="tab-online">
+          <p class="overlay-subtitle">Play a person. Both crews run the same simulation; the server is the referee.</p>
+          <div class="online-form">
+            <label class="online-label">Callsign <input class="online-input" id="online-name" type="text" maxlength="16" placeholder="Your name" autocomplete="off" /></label>
+            <label class="online-label">Server <input class="online-input is-wide" id="online-url" type="text" placeholder="wss://your-server.example" autocomplete="off" /></label>
+          </div>
+          <div>
+            <p class="select-label">Deck (room host picks)</p>
+            <div class="select-row" id="online-decks"></div>
+          </div>
+          <div class="button-row">
+            <button class="game-button" id="online-quick-button" type="button">Quick match</button>
+            <button class="game-button is-secondary" id="online-create-button" type="button">Create room</button>
+          </div>
+          <div class="online-form">
+            <label class="online-label">Room code <input class="online-input" id="online-code" type="text" maxlength="6" placeholder="ABCD" autocomplete="off" /></label>
+            <button class="game-button is-secondary is-small" id="online-join-button" type="button">Join room</button>
+          </div>
+          <p class="online-status" id="online-status">Not connected.</p>
+        </div>
+
+        <div class="tab-panel is-hidden" id="tab-briefing">
+          <div class="overlay-section">
+            <h2>How it works</h2>
+            <p class="overlay-body">You hold the port half, the rival holds starboard. Scrap builds defenses on your deck plating; every turret draws reactor power (1, 2, 3 per tier) from a budget of 24. Biomass regenerates and pays for drop pods aimed at the rival's hull breaches; regen, cap, and swarm HP all climb as the match runs, and every pod you drop adds a little regen for good. Bulkheads seal corridors and vents for 90 seconds and block sight, but every breach must keep a route to the core. Ducts (marked D1, D2) are linked pairs: the swarm crawls in one mouth, hidden and untargetable, and climbs out of the other, usually near a reactor. Seal either mouth to close the duct. Sealed hatches open at 2:00. EMP and cutter pods land anywhere on the rival deck. First reactor to zero loses; after five minutes both reactors bleed.</p>
+          </div>
+          <div class="overlay-section">
+            <h2>Codex</h2>
+            <ul class="codex" id="codex"></ul>
+          </div>
+          <div class="overlay-section">
+            <h2>Controls</h2>
+            <ul class="controls-list">
+              <li><kbd>Click</kbd> deck tile: build ring. Corridor: bulkhead</li>
+              <li><kbd>Click</kbd> own tower: upgrade, target, sell</li>
+              <li><kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd> <kbd>R</kbd> <kbd>T</kbd> <kbd>Y</kbd> pick a pod</li>
+              <li><kbd>Click</kbd> a rival breach marker to drop it</li>
+              <li><kbd>1</kbd> to <kbd>5</kbd> quick-build on hovered tile</li>
+              <li><kbd>U</kbd> upgrade, <kbd>X</kbd> sell</li>
+              <li><kbd>F</kbd> 2x speed, <kbd>P</kbd> pause</li>
+              <li><kbd>Esc</kbd> or right click: cancel</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="overlay is-hidden" id="pause-overlay" aria-label="Paused">
+      <div class="overlay-panel">
+        <h1 class="overlay-title">Paused</h1>
+        <div class="button-row">
+          <button class="game-button" id="resume-button" type="button">Resume</button>
+          <button class="game-button is-secondary" id="abandon-button" type="button">Abandon ship</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="overlay is-hidden" id="end-overlay" aria-label="Match over">
+      <div class="overlay-panel">
+        <h1 class="overlay-title" id="end-title">Reactor lost</h1>
+        <p class="overlay-body" id="end-summary"></p>
+        <div class="button-row">
+          <button class="game-button" id="play-again-button" type="button">Rematch</button>
+          <button class="game-button is-secondary is-hidden" id="next-commander-button" type="button">Next commander</button>
+          <button class="game-button is-secondary" id="back-to-menu-button" type="button">Main menu</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="send-bar">
+    <div class="send-cards" id="send-cards"></div>
+    <p class="send-hint" id="send-hint">Pick a pod, then click a breach marker on the rival's hull.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
