@@ -22,4 +22,8 @@ const topLevelNames = [...sharedSource.matchAll(/^(?:const|let|function|class)\s
 const uniqueNames = [...new Set(topLevelNames)];
 writeFileSync(join(ROOT, 'server', 'core.mjs'), `${sharedSource}\nexport { ${uniqueNames.join(', ')} };\n`);
 
+const indexSource = readFileSync(join(ROOT, 'src', 'client', 'index.html'), 'utf8');
+mkdirSync(join(ROOT, 'artifact'), { recursive: true });
+writeFileSync(join(ROOT, 'artifact', 'deadlight-hull-breach.html'), indexSource.replace('<script src="app.js"></script>', `<script>\n'use strict';\n${sharedSource}\n${clientSource}\n</script>`));
+
 console.log(`Built docs/app.js and server/core.mjs (${uniqueNames.length} shared exports).`);
