@@ -272,6 +272,25 @@
     }
     .online-input.is-wide { width: 300px; }
     .online-status { margin: 0; color: var(--holo-edge); font-family: var(--font-mono); font-size: 0.9rem; min-height: 1.4em; }
+    .online-connect, .online-room { display: flex; flex-direction: column; gap: 12px; }
+    .online-connect.is-hidden, .online-room.is-hidden { display: none; }
+    .room-header { display: flex; gap: 18px; align-items: center; justify-content: center; flex-wrap: wrap; }
+    .room-code { font-family: var(--font-mono); font-size: 2.2rem; letter-spacing: 0.3em; color: var(--holo-bright); text-shadow: 0 0 14px var(--holo-glow); line-height: 1; }
+    .room-seats { display: flex; gap: 8px; }
+    .room-seat {
+      min-width: 150px;
+      padding: 8px 12px;
+      border: 1px solid var(--holo-edge-dim);
+      border-left: 3px solid var(--holo-edge-dim);
+      background: rgba(169, 220, 236, 0.04);
+      text-align: left;
+    }
+    .room-seat.is-ready { border-left-color: var(--holo-bright); }
+    .room-seat.is-you { background: rgba(169, 220, 236, 0.1); }
+    .room-seat.is-empty { opacity: 0.5; }
+    .room-seat-name { font-size: 0.9rem; letter-spacing: 0.06em; text-transform: uppercase; }
+    .room-seat-meta { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-dim); }
+    .room-seat.is-ready .room-seat-meta { color: var(--holo-bright); }
 
     .send-cards { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; width: 100%; }
     .send-card {
@@ -389,24 +408,40 @@
         </div>
 
         <div class="tab-panel is-hidden" id="tab-online">
-          <p class="overlay-subtitle">Play a person. Both crews run the same simulation; the server is the referee.</p>
-          <div class="online-form">
-            <label class="online-label">Callsign <input class="online-input" id="online-name" type="text" maxlength="16" placeholder="Your name" autocomplete="off" /></label>
-            <label class="online-label">Server <input class="online-input is-wide" id="online-url" type="text" placeholder="wss://your-server.example" autocomplete="off" /></label>
+          <div class="online-connect" id="online-connect">
+            <p class="overlay-subtitle">Play a person. Both crews run the same simulation; the server is the referee.</p>
+            <div class="online-form">
+              <label class="online-label">Callsign <input class="online-input" id="online-name" type="text" maxlength="16" placeholder="Your name" autocomplete="off" /></label>
+              <label class="online-label">Server <input class="online-input is-wide" id="online-url" type="text" placeholder="wss://your-server" autocomplete="off" /></label>
+            </div>
+            <div class="button-row">
+              <button class="game-button" id="online-create-button" type="button">Create room</button>
+              <button class="game-button is-secondary" id="online-quick-button" type="button">Quick match</button>
+            </div>
+            <div class="online-form">
+              <label class="online-label">Room code <input class="online-input" id="online-code" type="text" maxlength="4" placeholder="ABCD" autocomplete="off" /></label>
+              <button class="game-button is-secondary is-small" id="online-join-button" type="button">Join room</button>
+            </div>
+            <p class="online-status" id="online-status">Not connected.</p>
           </div>
-          <div>
-            <p class="select-label">Deck (room host picks)</p>
-            <div class="select-row" id="online-decks"></div>
+          <div class="online-room is-hidden" id="online-room">
+            <div class="room-header">
+              <div>
+                <p class="select-label">Room code</p>
+                <div class="room-code" id="room-code">----</div>
+              </div>
+              <div class="room-seats" id="room-seats"></div>
+            </div>
+            <div>
+              <p class="select-label">Deck <span id="room-deck-owner"></span></p>
+              <div class="select-row" id="room-decks"></div>
+            </div>
+            <div class="button-row">
+              <button class="game-button" id="room-ready-button" type="button">Ready</button>
+              <button class="game-button is-secondary" id="room-leave-button" type="button">Leave room</button>
+            </div>
+            <p class="online-status" id="room-status"></p>
           </div>
-          <div class="button-row">
-            <button class="game-button" id="online-quick-button" type="button">Quick match</button>
-            <button class="game-button is-secondary" id="online-create-button" type="button">Create room</button>
-          </div>
-          <div class="online-form">
-            <label class="online-label">Room code <input class="online-input" id="online-code" type="text" maxlength="6" placeholder="ABCD" autocomplete="off" /></label>
-            <button class="game-button is-secondary is-small" id="online-join-button" type="button">Join room</button>
-          </div>
-          <p class="online-status" id="online-status">Not connected.</p>
         </div>
 
         <div class="tab-panel is-hidden" id="tab-briefing">
@@ -452,6 +487,7 @@
         <div class="button-row">
           <button class="game-button" id="play-again-button" type="button">Rematch</button>
           <button class="game-button is-secondary is-hidden" id="next-commander-button" type="button">Next commander</button>
+          <button class="game-button is-hidden" id="return-room-button" type="button">Return to room</button>
           <button class="game-button is-secondary" id="back-to-menu-button" type="button">Main menu</button>
         </div>
       </div>

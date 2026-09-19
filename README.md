@@ -36,12 +36,18 @@ fly launch --copy-config --now
 
 Use `wss://` for the server address when the client is served over HTTPS (GitHub Pages is), because browsers refuse insecure sockets from secure pages. Hosts like Fly and Railway terminate TLS for you.
 
+## Rooms
+
+Rooms persist between matches. Create one (or join by its four-letter code) and you keep your seat until you press Leave. The host picks the deck (Random by default); a match starts when both seats press Ready, and the end screen returns both players to the room for a rematch. A player who drops mid-match has 45 seconds to rejoin with the same callsign and code, and takes their seat back with the match still running. Empty rooms are cleared after ten minutes.
+
+To spare everyone typing the address, set `ONLINE_DEFAULT_SERVER_URL` near the top of `src/client/app.js` to your `wss://` server and rebuild (or edit the same constant in `docs/app.js`). A `?server=wss://...` query parameter on the client URL overrides it.
+
 ## Protocol
 
-Client to server: `hello {name}`, `quick {deckKey}`, `create {deckKey}`, `join {code}`, `command {command}`, `leave`.
-Server to client: `welcome`, `queued`, `room {code, players}`, `start {side, deckKey, opponentName}`, `snapshot {snapshot}`, `over {winnerSide, reason}`, `error {message}`.
+Client to server: `hello {name}`, `quick`, `create {deckChoice}`, `join {code}`, `setDeck {deckChoice}` (host only), `ready {isReady}`, `command {command}`, `leave`.
+Server to client: `welcome`, `queued`, `room {code, deckChoice, hostSide, isMatchRunning, players}`, `start {side, deckKey, opponentName, isResume}`, `snapshot {snapshot}`, `over {winnerSide, reason}`, `error {message}`.
 
-Commands are validated against the socket's seat, so a client can only act for its own side. A disconnected player gets 30 seconds to return before the match is forfeited.
+Commands are validated against the socket's seat, so a client can only act for its own side.
 
 ## Editing the game
 

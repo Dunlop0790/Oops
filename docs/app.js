@@ -3112,7 +3112,12 @@ const MENU_TABS = Object.freeze(['campaign', 'skirmish', 'online', 'briefing']);
 const CRITICAL_CORE_FRACTION = 0.35;
 const MODE_OFFLINE = 'offline';
 const MODE_ONLINE = 'online';
+// Set this once to your hosted server (wss://...) so nobody has to type it.
+// A ?server=wss://... query parameter overrides it.
+const ONLINE_DEFAULT_SERVER_URL = '';
+const DECK_RANDOM = 'random';
 const ONLINE_URL_STORAGE_KEY = 'deadlight.serverUrl';
+const ONLINE_CODE_STORAGE_KEY = 'deadlight.roomCode';
 const ONLINE_NAME_STORAGE_KEY = 'deadlight.callsign';
 
 class RadialMenus {
@@ -3272,10 +3277,19 @@ class Interface {
     this.onlineUrl = elementById('online-url');
     this.onlineCode = elementById('online-code');
     this.onlineStatus = elementById('online-status');
-    this.onlineDecks = elementById('online-decks');
     this.onlineQuickButton = elementById('online-quick-button');
     this.onlineCreateButton = elementById('online-create-button');
     this.onlineJoinButton = elementById('online-join-button');
+    this.onlineConnect = elementById('online-connect');
+    this.onlineRoom = elementById('online-room');
+    this.roomCode = elementById('room-code');
+    this.roomSeats = elementById('room-seats');
+    this.roomDecks = elementById('room-decks');
+    this.roomDeckOwner = elementById('room-deck-owner');
+    this.roomReadyButton = elementById('room-ready-button');
+    this.roomLeaveButton = elementById('room-leave-button');
+    this.roomStatus = elementById('room-status');
+    this.returnRoomButton = elementById('return-room-button');
     this.cardButtons = new Map();
     this.buildSendCards();
     this.buildCodex();
@@ -3329,23 +3343,58 @@ class Interface {
     }));
   }
 
-  renderOnlineDecks(selection) {
-    this.onlineDecks.replaceChildren(...DECK_ORDER.map((deckKey) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = `game-button is-secondary is-small${selection.deckKey === deckKey ? ' is-active' : ''}`;
-      button.textContent = DECKS[deckKey].name;
-      button.style.borderLeft = `6px solid ${DECKS[deckKey].theme.edgeLight}`;
-      button.addEventListener('click', () => {
-        selection.deckKey = deckKey;
-        this.renderOnlineDecks(selection);
-      });
-      return button;
-    }));
-  }
-
   setOnlineStatus(text) {
     this.onlineStatus.textContent = text;
+    this.roomStatus.textContent = text;
+  }
+
+  showRoomView(isInRoom) {
+    this.onlineConnect.classList.toggle('is-hidden', isInRoom);
+    this.onlineRoom.classList.toggle('is-hidden', !isInRoom);
+  }
+
+  renderRoom(room, mySide, onDeckPick, onReadyToggle) {
+    this.showRoomView(true);
+    this.roomCode.textContent = room.code;
+    const isHost = room.hostSide === mySide;
+    this.roomSeats.replaceChildren(...room.players.map((player, side) => {
+      const seat = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'room-seat-name';
+      const meta = document.createElement('div');
+      meta.className = 'room-seat-meta';
+      if (player === null) {
+        seat.className = 'room-seat is-empty';
+        name.textContent = 'Open seat';
+        meta.textContent = 'waiting';
+      } else {
+        seat.className = `room-seat${player.isReady ? ' is-ready' : ''}${side === mySide ? ' is-you' : ''}`;
+        name.textContent = `${player.name}${side === room.hostSide ? ' (host)' : ''}`;
+        meta.textContent = !player.isConnected ? 'reconnecting' : (player.isReady ? 'READY' : 'not ready');
+      }
+      seat.append(name, meta);
+      return seat;
+    }));
+    this.roomDeckOwner.textContent = isHost ? '(you pick)' : '(host picks)';
+    const choices = [DECK_RANDOM, ...DECK_ORDER];
+    this.roomDecks.replaceChildren(...choices.map((choice) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `game-button is-secondary is-small${room.deckChoice === choice ? ' is-active' : ''}`;
+      button.textContent = choice === DECK_RANDOM ? 'Random' : DECKS[choice].name;
+      if (choice !== DECK_RANDOM) button.style.borderLeft = `6px solid ${DECKS[choice].theme.edgeLight}`;
+      button.disabled = !isHost || room.isMatchRunning;
+      button.addEventListener('click', () => onDeckPick(choice));
+      return button;
+    }));
+    const me = room.players[mySide];
+    const isReady = me !== null && me.isReady;
+    this.roomReadyButton.textContent = isReady ? 'Ready (cancel)' : 'Ready';
+    this.roomReadyButton.classList.toggle('is-active', isReady);
+    this.roomReadyButton.disabled = room.isMatchRunning;
+    this.roomReadyButton.onclick = () => onReadyToggle(!isReady);
+    const bothSeated = room.players.every((player) => player !== null);
+    this.roomStatus.textContent = room.isMatchRunning ? 'Match in progress.' : (bothSeated ? 'Both crews seated. Ready up to launch.' : 'Share the code. The match starts when both crews are ready.');
   }
 
   renderSkirmish(selection) {
@@ -3464,6 +3513,7 @@ class Interface {
     this.endSummary.textContent = `Match lasted ${formatClock(sim.clockS)}. You destroyed ${client.stats.kills} of the swarm and dropped ${client.stats.sends} pods; ${client.stats.coreHitsTaken} bodies reached your core. Rival core ended at ${sim.sides[sim.opponentOf(client.side)].coreHp}, yours at ${sim.sides[client.side].coreHp}.${line}`;
     this.nextCommanderButton.classList.toggle('is-hidden', !hasNextCommander);
     elementById('play-again-button').classList.toggle('is-hidden', client.mode === MODE_ONLINE);
+    this.returnRoomButton.classList.toggle('is-hidden', client.mode !== MODE_ONLINE);
     this.showOverlay(this.endOverlay);
   }
 }
@@ -3711,7 +3761,7 @@ function main() {
   });
   const campaign = loadCampaign();
   const skirmish = { commanderKey: COMMANDERS[0].key, deckKey: DECK_ORDER[0], difficultyKey: 'normal' };
-  const online = { deckKey: DECK_ORDER[0], net: null, pendingSnapshot: null, opponentName: '' };
+  const online = { net: null, pendingSnapshot: null, opponentName: '', room: null, mySide: null, callsign: '' };
   const client = {
     side: SIDE_PORT,
     mode: MODE_OFFLINE,
@@ -3800,23 +3850,41 @@ function main() {
     client.ai = null;
     online.pendingSnapshot = null;
     resetMatchState();
-    ui.showTab('campaign');
   }
 
-  function connectOnline(afterOpen) {
-    const url = ui.onlineUrl.value.trim();
+  function resolveServerUrl() {
+    const fromQuery = new URLSearchParams(window.location.search).get('server');
+    const typed = ui.onlineUrl.value.trim();
+    return fromQuery ?? (typed.length > 0 ? typed : ONLINE_DEFAULT_SERVER_URL);
+  }
+
+  function isInRoom() {
+    return online.room !== null && online.net !== null && online.net.isOpen;
+  }
+
+  // Reuses the open socket when there is one; otherwise connects first.
+  function withConnection(afterOpen) {
     const name = ui.onlineName.value.trim().slice(0, 16) || 'Salvager';
+    online.callsign = name;
+    try {
+      window.localStorage.setItem(ONLINE_NAME_STORAGE_KEY, name);
+    } catch (error) {
+      // Preferences simply will not persist.
+    }
+    if (online.net !== null && online.net.isOpen) {
+      afterOpen();
+      return;
+    }
+    const url = resolveServerUrl();
     if (url.length === 0) {
       ui.setOnlineStatus('Enter the server address first.');
       return;
     }
     try {
       window.localStorage.setItem(ONLINE_URL_STORAGE_KEY, url);
-      window.localStorage.setItem(ONLINE_NAME_STORAGE_KEY, name);
     } catch (error) {
       // Preferences simply will not persist.
     }
-    if (online.net !== null) online.net.close();
     ui.setOnlineStatus(`Connecting to ${url}`);
     online.net = new NetClient(url, {
       onOpen: () => {
@@ -3824,34 +3892,71 @@ function main() {
         afterOpen();
       },
       onClose: () => {
-        ui.setOnlineStatus('Disconnected from server.');
+        online.net = null;
+        online.room = null;
+        ui.showRoomView(false);
+        ui.setOnlineStatus('Disconnected from server. Join the same room code to take your seat back.');
         if (client.mode === MODE_ONLINE && client.phase === PHASE_PLAYING) {
           client.sim.isOver = true;
           client.sim.winnerSide = null;
           finishMatch();
         }
-        online.net = null;
       },
-      onError: () => ui.setOnlineStatus('Could not reach the server. Check the address (wss:// for hosted servers).'),
+      onError: () => ui.setOnlineStatus('Could not reach the server. It may be waking up; try again in a moment.'),
       onMessage: handleServerMessage,
     });
   }
 
+  function leaveRoom() {
+    if (online.net !== null && online.net.isOpen) online.net.send({ type: 'leave' });
+    online.room = null;
+    online.mySide = null;
+    ui.showRoomView(false);
+    ui.setOnlineStatus('Left the room.');
+  }
+
+  function rememberRoomCode(code) {
+    ui.onlineCode.value = code;
+    try {
+      window.localStorage.setItem(ONLINE_CODE_STORAGE_KEY, code);
+    } catch (error) {
+      // Fine without it.
+    }
+  }
+
   function handleServerMessage(message) {
-    if (message.type === 'queued') ui.setOnlineStatus('In the queue. Waiting for another crew.');
-    else if (message.type === 'room') ui.setOnlineStatus(`Room ${message.code}: ${message.players.join(' vs ')}. ${message.players.length < 2 ? 'Share the code.' : 'Starting.'}`);
-    else if (message.type === 'start') {
-      ui.setOnlineStatus(`Match started against ${message.opponentName}.`);
+    if (message.type === 'queued') {
+      ui.setOnlineStatus('In the queue. Waiting for another crew.');
+      return;
+    }
+    if (message.type === 'room') {
+      online.room = message;
+      online.mySide = message.players.findIndex((player) => player !== null && player.name === online.callsign && player.isConnected);
+      if (online.mySide === -1) online.mySide = message.players.findIndex((player) => player !== null && player.name === online.callsign);
+      rememberRoomCode(message.code);
+      ui.renderRoom(message, online.mySide,
+        (deckChoice) => online.net.send({ type: 'setDeck', deckChoice }),
+        (isReady) => online.net.send({ type: 'ready', isReady }));
+      return;
+    }
+    if (message.type === 'start') {
       online.opponentName = message.opponentName;
       startOnlineMatch(message.side, message.deckKey, message.opponentName);
-    } else if (message.type === 'snapshot') online.pendingSnapshot = message.snapshot;
-    else if (message.type === 'over') {
+      return;
+    }
+    if (message.type === 'snapshot') {
+      online.pendingSnapshot = message.snapshot;
+      return;
+    }
+    if (message.type === 'over') {
       if (client.mode !== MODE_ONLINE || client.sim === null) return;
       client.sim.isOver = true;
       client.sim.winnerSide = message.winnerSide;
       ui.setOnlineStatus(message.reason);
       finishMatch();
-    } else if (message.type === 'error') ui.setOnlineStatus(message.message);
+      return;
+    }
+    if (message.type === 'error') ui.setOnlineStatus(message.message);
   }
 
   function startCampaignMatch(commanderKey) {
@@ -3865,11 +3970,10 @@ function main() {
   }
 
   function openMenu() {
-    if (client.mode === MODE_ONLINE && online.net !== null && online.net.isOpen) online.net.send({ type: 'leave' });
     client.phase = PHASE_MENU;
     client.sim = null;
     VIEW.isFlipped = false;
-    ui.renderOnlineDecks(online);
+    ui.showRoomView(isInRoom());
     ui.renderCampaign(campaign, startCampaignMatch);
     ui.renderSkirmish(skirmish);
     ui.showOverlay(ui.menuOverlay);
@@ -3993,22 +4097,29 @@ function main() {
     if (client.isCampaignMatch) startCampaignMatch(client.commander.key);
     else startMatch(skirmish.commanderKey, skirmish.deckKey, skirmish.difficultyKey, false);
   });
-  ui.onlineQuickButton.addEventListener('click', () => connectOnline(() => online.net.send({ type: 'quick', deckKey: online.deckKey })));
-  ui.onlineCreateButton.addEventListener('click', () => connectOnline(() => online.net.send({ type: 'create', deckKey: online.deckKey })));
+  ui.onlineQuickButton.addEventListener('click', () => withConnection(() => online.net.send({ type: 'quick' })));
+  ui.onlineCreateButton.addEventListener('click', () => withConnection(() => online.net.send({ type: 'create', deckChoice: DECK_RANDOM })));
   ui.onlineJoinButton.addEventListener('click', () => {
     const code = ui.onlineCode.value.trim().toUpperCase();
     if (code.length === 0) {
       ui.setOnlineStatus('Enter a room code.');
       return;
     }
-    connectOnline(() => online.net.send({ type: 'join', code }));
+    withConnection(() => online.net.send({ type: 'join', code }));
+  });
+  ui.roomLeaveButton.addEventListener('click', leaveRoom);
+  ui.returnRoomButton.addEventListener('click', () => {
+    openMenu();
+    ui.showTab('online');
   });
   try {
-    ui.onlineUrl.value = window.localStorage.getItem(ONLINE_URL_STORAGE_KEY) ?? '';
+    ui.onlineUrl.value = window.localStorage.getItem(ONLINE_URL_STORAGE_KEY) ?? ONLINE_DEFAULT_SERVER_URL;
     ui.onlineName.value = window.localStorage.getItem(ONLINE_NAME_STORAGE_KEY) ?? '';
+    ui.onlineCode.value = window.localStorage.getItem(ONLINE_CODE_STORAGE_KEY) ?? '';
   } catch (error) {
     // Defaults stay empty.
   }
+  if (ONLINE_DEFAULT_SERVER_URL.length > 0 && ui.onlineUrl.value.length === 0) ui.onlineUrl.value = ONLINE_DEFAULT_SERVER_URL;
   ui.nextCommanderButton.addEventListener('click', () => {
     const key = nextCommanderKey();
     if (key !== null) startCampaignMatch(key);

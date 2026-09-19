@@ -28,6 +28,8 @@ function createBot(name, commanderKey, action) {
       commands.forEach((command) => socket.send(JSON.stringify({ type: 'command', command })));
     } else if (message.type === 'room') {
       bot.roomCode = message.code;
+      const mine = message.players.find((player) => player !== null && player.name === name);
+      if (mine && !mine.isReady && !message.isMatchRunning && message.players.every((player) => player !== null)) socket.send(JSON.stringify({ type: 'ready', isReady: true }));
     } else if (message.type === 'over') {
       bot.result = message;
     } else if (message.type === 'error') {
@@ -37,7 +39,7 @@ function createBot(name, commanderKey, action) {
   return bot;
 }
 
-const host = createBot('Voss-bot', 'voss', { type: 'create', deckKey: 'hydroponics' });
+const host = createBot('Voss-bot', 'voss', { type: 'create', deckChoice: 'hydroponics' });
 while (host.roomCode === null) await new Promise((resolve) => setTimeout(resolve, 50));
 const guest = createBot('Kell-bot', 'kell', { type: 'join', code: host.roomCode });
 
