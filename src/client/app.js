@@ -41,6 +41,7 @@ function commanderByKey(key) {
 }
 
 const MENU_TABS = Object.freeze(['campaign', 'skirmish', 'online', 'briefing']);
+const CRITICAL_CORE_FRACTION = 0.35;
 const MODE_OFFLINE = 'offline';
 const MODE_ONLINE = 'online';
 const ONLINE_URL_STORAGE_KEY = 'deadlight.serverUrl';
@@ -337,6 +338,11 @@ class Interface {
     this.rivalLabel.textContent = `Rival: ${client.commander.name.split(' ').pop()}`;
     this.coreYouBar.style.width = `${(you.coreHp / MATCH_RULES.coreHp) * 100}%`;
     this.coreRivalBar.style.width = `${(rival.coreHp / MATCH_RULES.coreHp) * 100}%`;
+    [[this.coreYou, this.coreYouBar, you], [this.coreRival, this.coreRivalBar, rival]].forEach(([value, bar, state]) => {
+      const isCritical = state.coreHp <= MATCH_RULES.coreHp * CRITICAL_CORE_FRACTION;
+      value.classList.toggle('is-critical', isCritical);
+      bar.parentElement.classList.toggle('is-critical', isCritical);
+    });
     this.biomassBar.style.width = `${(you.biomass / sim.biomassCap) * 100}%`;
     this.powerBar.style.width = `${(sim.powerUsed(you) / MATCH_RULES.reactorPowerCap) * 100}%`;
     this.pauseButton.disabled = client.mode === MODE_ONLINE;

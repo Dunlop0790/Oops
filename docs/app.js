@@ -52,7 +52,7 @@ const DECKS = Object.freeze({
     ],
     theme: {
       decorStyle: DECOR_GARDEN, deckLight: '#3d4d42', deckDark: '#27312b', corridorFloor: '#1b2320', edgeLight: '#8ee06b', edgeLightDim: 'rgba(142, 224, 107, 0.3)',
-      wall: '#4d6052', wallTop: '#617766', wallShade: '#2c3a31', machine: '#4f6238', machineShade: '#2f3c22', grime: 'rgba(70, 110, 50, 0.22)', splatter: 'rgba(142, 224, 107, 0.4)',
+      wall: '#4d6052', wallTop: '#617766', wallShade: '#2c3a31', machine: '#4f6238', machineShade: '#2f3c22', grime: 'rgba(70, 110, 50, 0.22)', splatter: 'rgba(255, 106, 26, 0.38)',
       lamp: 'rgba(142, 224, 107, 0.12)', detail: '#6fae5a', swatch: 'linear-gradient(135deg, #3d4d42, #8ee06b)',
     },
   },
@@ -97,8 +97,8 @@ const DECKS = Object.freeze({
       'WWWWWWBWWW',
     ],
     theme: {
-      decorStyle: DECOR_CLINIC, deckLight: '#c4ccd1', deckDark: '#a4aeb5', corridorFloor: '#6a747c', edgeLight: '#57d3ff', edgeLightDim: 'rgba(87, 211, 255, 0.3)',
-      wall: '#8d979f', wallTop: '#b3bcc3', wallShade: '#5b656d', machine: '#d9dfe4', machineShade: '#8f9aa3', grime: 'rgba(0, 0, 0, 0.1)', splatter: 'rgba(150, 25, 25, 0.55)',
+      decorStyle: DECOR_CLINIC, deckLight: '#c4ccd1', deckDark: '#a4aeb5', corridorFloor: '#6a747c', edgeLight: '#a9dcec', edgeLightDim: 'rgba(87, 211, 255, 0.3)',
+      wall: '#8d979f', wallTop: '#b3bcc3', wallShade: '#5b656d', machine: '#d9dfe4', machineShade: '#8f9aa3', grime: 'rgba(0, 0, 0, 0.1)', splatter: 'rgba(255, 106, 26, 0.45)',
       lamp: 'rgba(255, 255, 255, 0.12)', detail: '#e2513f', swatch: 'linear-gradient(135deg, #c4ccd1, #57d3ff)',
     },
   },
@@ -121,7 +121,7 @@ const DECKS = Object.freeze({
     ],
     theme: {
       decorStyle: DECOR_STARS, deckLight: '#262a40', deckDark: '#181b2d', corridorFloor: '#10121f', edgeLight: '#b48cff', edgeLightDim: 'rgba(180, 140, 255, 0.3)',
-      wall: '#2f3556', wallTop: '#4b5286', wallShade: '#1a1d34', machine: '#3c426e', machineShade: '#242849', grime: 'rgba(0, 0, 0, 0.25)', splatter: 'rgba(142, 224, 107, 0.4)',
+      wall: '#2f3556', wallTop: '#4b5286', wallShade: '#1a1d34', machine: '#3c426e', machineShade: '#242849', grime: 'rgba(0, 0, 0, 0.25)', splatter: 'rgba(255, 106, 26, 0.38)',
       lamp: 'rgba(180, 140, 255, 0.12)', detail: '#f4f0ff', swatch: 'linear-gradient(135deg, #262a40, #b48cff)',
     },
   },
@@ -229,7 +229,7 @@ const CREEP_TYPES = Object.freeze({
   shambler: {
     name: 'Shambler', shape: 'shambler', hp: 70, speedPxPerS: 55, kineticResistPct: 0, energyResistPct: 0.15, regenHpPerS: 0,
     isSlowImmune: false, radiusPx: 11, coreDamage: 1, scrapBounty: 6, deathSpawn: null,
-    bodyColor: '#7b8a6e', trimColor: '#3f4a38', accentColor: '#8ee06b',
+    bodyColor: '#7b8a6e', trimColor: '#3f4a38', accentColor: '#ff6a1a',
   },
   lurcher: {
     name: 'Lurcher', shape: 'lurcher', hp: 45, speedPxPerS: 130, kineticResistPct: 0, energyResistPct: 0, regenHpPerS: 0,
@@ -239,22 +239,22 @@ const CREEP_TYPES = Object.freeze({
   carapace: {
     name: 'Carapace', shape: 'carapace', hp: 220, speedPxPerS: 50, kineticResistPct: 0.55, energyResistPct: 0, regenHpPerS: 0,
     isSlowImmune: false, radiusPx: 14, coreDamage: 2, scrapBounty: 14, deathSpawn: null,
-    bodyColor: '#5b6673', trimColor: '#2d343c', accentColor: '#8ee06b',
+    bodyColor: '#5b6673', trimColor: '#2d343c', accentColor: '#ff6a1a',
   },
   wispform: {
     name: 'Wispform', shape: 'wispform', hp: 90, speedPxPerS: 95, kineticResistPct: 0, energyResistPct: 0.7, regenHpPerS: 1,
     isSlowImmune: true, radiusPx: 10, coreDamage: 1, scrapBounty: 10, deathSpawn: null,
-    bodyColor: '#9fe8d6', trimColor: '#3a8f7f', accentColor: '#ffffff',
+    bodyColor: '#c9e3ec', trimColor: '#5f8794', accentColor: '#ffffff',
   },
   bloater: {
     name: 'Bloater', shape: 'bloater', hp: 160, speedPxPerS: 45, kineticResistPct: 0.2, energyResistPct: 0.2, regenHpPerS: 0,
     isSlowImmune: false, radiusPx: 15, coreDamage: 2, scrapBounty: 12, deathSpawn: { typeKey: 'shambler', count: 2 },
-    bodyColor: '#8f9a5e', trimColor: '#4a4f2a', accentColor: '#c8f07a',
+    bodyColor: '#8f8a5e', trimColor: '#4a452a', accentColor: '#ff9a5a',
   },
   reclaimer: {
     name: 'Reclaimer', shape: 'reclaimer', hp: 650, speedPxPerS: 38, kineticResistPct: 0.65, energyResistPct: 0.1, regenHpPerS: 3,
     isSlowImmune: false, radiusPx: 18, coreDamage: 4, scrapBounty: 35, deathSpawn: null,
-    bodyColor: '#6b5a48', trimColor: '#33291f', accentColor: '#f2a93b',
+    bodyColor: '#6b5a48', trimColor: '#33291f', accentColor: '#ff6a1a',
   },
 });
 
@@ -282,7 +282,7 @@ const PROJECTILE_FLAME = 'flame';
 const TOWER_TYPES = Object.freeze({
   sentry: {
     name: 'Sentry', hotkey: '1', role: 'Kinetic autogun. Fast, long reach.', damageType: DAMAGE_KINETIC, projectileKind: PROJECTILE_ROUND,
-    projectileSpeedPxPerS: 480, splashRadiusPx: 0, slowDurationS: 0, burnDurationS: 0, isBulkhead: false, color: '#b8bec8', accent: '#f2a93b',
+    projectileSpeedPxPerS: 480, splashRadiusPx: 0, slowDurationS: 0, burnDurationS: 0, isBulkhead: false, color: '#b8bec8', accent: '#ff6a1a',
     levels: [
       { cost: 60, damage: 11, attacksPerS: 1.5, rangeTiles: 3.1, slowPct: 0, burnPerS: 0 },
       { cost: 95, damage: 20, attacksPerS: 1.7, rangeTiles: 3.4, slowPct: 0, burnPerS: 0 },
@@ -291,7 +291,7 @@ const TOWER_TYPES = Object.freeze({
   },
   arc: {
     name: 'Arc coil', hotkey: '2', role: 'Energy discharge. Cuts through plating.', damageType: DAMAGE_ENERGY, projectileKind: PROJECTILE_ARC,
-    projectileSpeedPxPerS: 340, splashRadiusPx: 0, slowDurationS: 0, burnDurationS: 0, isBulkhead: false, color: '#57d3ff', accent: '#e6f8ff',
+    projectileSpeedPxPerS: 340, splashRadiusPx: 0, slowDurationS: 0, burnDurationS: 0, isBulkhead: false, color: '#a9dcec', accent: '#e6f8ff',
     levels: [
       { cost: 90, damage: 30, attacksPerS: 0.8, rangeTiles: 2.9, slowPct: 0, burnPerS: 0 },
       { cost: 135, damage: 55, attacksPerS: 0.9, rangeTiles: 3.1, slowPct: 0, burnPerS: 0 },
@@ -300,7 +300,7 @@ const TOWER_TYPES = Object.freeze({
   },
   mortar: {
     name: 'Mortar pod', hotkey: '3', role: 'Kinetic splash. Wrecks packs.', damageType: DAMAGE_KINETIC, projectileKind: PROJECTILE_SHELL,
-    projectileSpeedPxPerS: 230, splashRadiusPx: 60, slowDurationS: 0, burnDurationS: 0, isBulkhead: false, color: '#6b6f78', accent: '#f2a93b',
+    projectileSpeedPxPerS: 230, splashRadiusPx: 60, slowDurationS: 0, burnDurationS: 0, isBulkhead: false, color: '#6b6f78', accent: '#ff6a1a',
     levels: [
       { cost: 110, damage: 40, attacksPerS: 0.45, rangeTiles: 2.8, slowPct: 0, burnPerS: 0 },
       { cost: 165, damage: 70, attacksPerS: 0.5, rangeTiles: 3.0, slowPct: 0, burnPerS: 0 },
@@ -327,7 +327,7 @@ const TOWER_TYPES = Object.freeze({
   },
   bulkhead: {
     name: 'Bulkhead', hotkey: '', role: 'Seals a corridor and blocks sight.', damageType: DAMAGE_KINETIC, projectileKind: PROJECTILE_ROUND,
-    projectileSpeedPxPerS: 0, splashRadiusPx: 0, slowDurationS: 0, burnDurationS: 0, isBulkhead: true, color: '#3a4149', accent: '#f2a93b',
+    projectileSpeedPxPerS: 0, splashRadiusPx: 0, slowDurationS: 0, burnDurationS: 0, isBulkhead: true, color: '#3a4149', accent: '#a9dcec',
     levels: [
       { cost: 40, damage: 0, attacksPerS: 0, rangeTiles: 0, slowPct: 0, burnPerS: 0 },
     ],
@@ -487,30 +487,30 @@ const PALETTE = Object.freeze({
   deckRivet: 'rgba(255, 255, 255, 0.12)',
   corridorFloor: '#1b1f24',
   corridorGrate: 'rgba(255, 255, 255, 0.06)',
-  corridorEdgeLight: '#f2a93b',
+  corridorEdgeLight: '#a9dcec',
   corridorEdgeLightDim: 'rgba(242, 169, 59, 0.35)',
   wall: '#4a525c',
   wallShade: '#2a3038',
   wallTop: '#5c656f',
   machine: '#5a4636',
   machineShade: '#3a2c22',
-  machineLight: '#57d3ff',
+  machineLight: '#a9dcec',
   breachHatch: '#2f353c',
   breachStripe: '#f2a93b',
   breachStripeDark: '#1b1f24',
-  breachMarker: 'rgba(142, 224, 107, 0.85)',
-  breachMarkerHover: '#8ee06b',
-  sabotageMarker: 'rgba(87, 211, 255, 0.9)',
-  cutterMarker: 'rgba(255, 140, 58, 0.9)',
-  ductGlow: 'rgba(142, 224, 107, 0.25)',
-  star: '#f4f0ff',
+  breachMarker: 'rgba(255, 106, 26, 0.85)',
+  breachMarkerHover: '#ff9a5a',
+  sabotageMarker: 'rgba(223, 246, 252, 0.95)',
+  cutterMarker: 'rgba(255, 106, 26, 0.95)',
+  ductGlow: 'rgba(255, 106, 26, 0.28)',
+  star: '#dff6fc',
   bannerFill: 'rgba(8, 24, 32, 0.9)',
-  bannerText: '#3fd8ff',
-  bannerSub: '#cfe9f3',
-  coreRing: '#57d3ff',
-  coreGlow: 'rgba(87, 211, 255, 0.35)',
+  bannerText: '#dff6fc',
+  bannerSub: '#c9e3ec',
+  coreRing: '#dff6fc',
+  coreGlow: 'rgba(169, 220, 236, 0.3)',
   coreHousing: '#3a4149',
-  coreDanger: '#e2513f',
+  coreDanger: '#ff6a1a',
   seam: 'rgba(87, 211, 255, 0.18)',
   rivalTint: 'rgba(226, 81, 63, 0.05)',
   lampGlow: 'rgba(242, 169, 59, 0.14)',
@@ -521,43 +521,43 @@ const PALETTE = Object.freeze({
   towerBaseDark: '#343a41',
   towerPlate: '#2c3239',
   hpBarBack: '#101317',
-  hpBarFront: '#8ee06b',
-  hpBarSlow: '#9fdcff',
-  hpBarBurn: '#ff8c3a',
-  hoverValid: 'rgba(87, 211, 255, 0.35)',
-  hoverInvalid: 'rgba(226, 81, 63, 0.35)',
+  hpBarFront: '#ff6a1a',
+  hpBarSlow: '#dff6fc',
+  hpBarBurn: '#ffb070',
+  hoverValid: 'rgba(169, 220, 236, 0.35)',
+  hoverInvalid: 'rgba(255, 106, 26, 0.35)',
   rangeRing: 'rgba(215, 221, 229, 0.4)',
-  losVisible: 'rgba(142, 224, 107, 0.7)',
-  losBlocked: 'rgba(226, 81, 63, 0.85)',
+  losVisible: 'rgba(223, 246, 252, 0.7)',
+  losBlocked: 'rgba(255, 106, 26, 0.85)',
   round: '#ffd36b',
-  arcBolt: '#57d3ff',
+  arcBolt: '#a9dcec',
   arcCore: '#ffffff',
   shell: '#1b1f24',
   shellShine: '#6b6f78',
   shard: '#d9f2ff',
   flame: '#ff8c3a',
   flameCore: '#ffd36b',
-  muzzleFlash: '#ffd36b',
-  slowTint: 'rgba(159, 220, 255, 0.5)',
-  burnTint: 'rgba(255, 140, 58, 0.45)',
-  biomassGlow: 'rgba(142, 224, 107, 0.3)',
+  muzzleFlash: '#ffc48a',
+  slowTint: 'rgba(223, 246, 252, 0.5)',
+  burnTint: 'rgba(255, 106, 26, 0.45)',
+  biomassGlow: 'rgba(255, 106, 26, 0.3)',
   eye: '#e8f3ff',
-  eyeGlow: '#8ee06b',
+  eyeGlow: '#ff6a1a',
   pod: '#3a4149',
-  podFin: '#f2a93b',
-  podFlame: '#ff8c3a',
-  podMarker: 'rgba(226, 81, 63, 0.8)',
-  floatingScrap: '#f2a93b',
-  floatingDamage: '#e2513f',
+  podFin: '#a9dcec',
+  podFlame: '#ff6a1a',
+  podMarker: 'rgba(255, 106, 26, 0.85)',
+  floatingScrap: '#a9dcec',
+  floatingDamage: '#ff6a1a',
   menuFill: 'rgba(8, 24, 32, 0.92)',
-  menuEdge: '#3fd8ff',
-  menuEdgeDisabled: '#25404c',
-  menuText: '#cfe9f3',
+  menuEdge: '#a9dcec',
+  menuEdgeDisabled: '#2b3f4a',
+  menuText: '#c9e3ec',
   menuTextDisabled: '#4f6a76',
   menuHighlight: '#ffffff',
-  menuSell: '#e2513f',
+  menuSell: '#ff6a1a',
   cursorFrameShadow: 'rgba(0, 0, 0, 0.5)',
-  playerColor: '#3fd8ff',
+  playerColor: '#dff6fc',
   grime: 'rgba(0, 0, 0, 0.12)',
   splatter: 'rgba(120, 190, 80, 0.35)',
   splatterDark: 'rgba(60, 110, 40, 0.4)',
@@ -568,19 +568,19 @@ const PALETTE = Object.freeze({
   ventSlat: '#0f1216',
   ventFrame: '#4a525c',
   hatchSealed: '#3a2226',
-  hatchSealedLight: '#e2513f',
+  hatchSealedLight: '#ff6a1a',
   bone: '#e6dcc8',
   flesh: '#9b4a46',
   fleshDark: '#5e2a28',
-  empArc: '#57d3ff',
+  empArc: '#dff6fc',
   disabledTint: 'rgba(10, 12, 16, 0.55)',
-  integrityBar: '#f2a93b',
+  integrityBar: '#a9dcec',
   tooltipFill: 'rgba(8, 24, 32, 0.95)',
-  tooltipEdge: '#3fd8ff',
-  tooltipTitle: '#3fd8ff',
-  tooltipText: '#cfe9f3',
-  tooltipDim: '#6f8f9c',
-  powerBar: '#57d3ff',
+  tooltipEdge: '#a9dcec',
+  tooltipTitle: '#dff6fc',
+  tooltipText: '#c9e3ec',
+  tooltipDim: '#6d8794',
+  powerBar: '#a9dcec',
 });
 
 const DRAW_SIZES = Object.freeze({
@@ -3109,6 +3109,7 @@ function commanderByKey(key) {
 }
 
 const MENU_TABS = Object.freeze(['campaign', 'skirmish', 'online', 'briefing']);
+const CRITICAL_CORE_FRACTION = 0.35;
 const MODE_OFFLINE = 'offline';
 const MODE_ONLINE = 'online';
 const ONLINE_URL_STORAGE_KEY = 'deadlight.serverUrl';
@@ -3405,6 +3406,11 @@ class Interface {
     this.rivalLabel.textContent = `Rival: ${client.commander.name.split(' ').pop()}`;
     this.coreYouBar.style.width = `${(you.coreHp / MATCH_RULES.coreHp) * 100}%`;
     this.coreRivalBar.style.width = `${(rival.coreHp / MATCH_RULES.coreHp) * 100}%`;
+    [[this.coreYou, this.coreYouBar, you], [this.coreRival, this.coreRivalBar, rival]].forEach(([value, bar, state]) => {
+      const isCritical = state.coreHp <= MATCH_RULES.coreHp * CRITICAL_CORE_FRACTION;
+      value.classList.toggle('is-critical', isCritical);
+      bar.parentElement.classList.toggle('is-critical', isCritical);
+    });
     this.biomassBar.style.width = `${(you.biomass / sim.biomassCap) * 100}%`;
     this.powerBar.style.width = `${(sim.powerUsed(you) / MATCH_RULES.reactorPowerCap) * 100}%`;
     this.pauseButton.disabled = client.mode === MODE_ONLINE;
